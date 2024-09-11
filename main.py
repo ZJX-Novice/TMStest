@@ -13,6 +13,8 @@ from time import sleep
 from usb_device import *
 from usb2lin import *
 
+finish_data = []
+
 #清除缓存
 def ClearCache():
     global first_message
@@ -42,10 +44,9 @@ def WriteMessage():
         print("")
     sleep(0.01)
     ClearCache()
-    # print(formatted_words)
-    # print("写入成功!",words)
 
-#读数据 
+
+# 读数据
 def ReadMessage():
     global first_message  # 全局变量存储首次ASCII码
     LINMsg = LIN_MSG()
@@ -101,44 +102,139 @@ def New_Version():
         ui.lineEdit_8.setText(ascll_message)
         print("HW:",ascll_message)
 
-#打开文件夹
+
+# 打开文件夹
 def OpenFileFolder(self):
-    FileFolder=QFileDialog.getExistingDirectory(None,'选择文件夹','C:\\')
-    ui.lineEdit.setText(FileFolder)
+    FileFolder = QFileDialog.getExistingDirectory(None, '选择文件夹', 'C:\\')
+    ui.lineEdit_9.setText(FileFolder)
     print(FileFolder)
 
-#打开文件
+
+# 打开文件
 def OpenFile(self):
-    Files,_ = QFileDialog.getOpenFileName(None, '打开列表文件', 'C:\\', 'LIN List File (*.bin);;MLX LIN List File (*.lin);;Any file (*)')
-    ui.lineEdit.setText(Files)
+
+    Files, _ = QFileDialog.getOpenFileName(None, '打开列表文件', 'C:\\','LIN List File (*.bin);;MLX LIN List File (*.lin);;Any file (*)')
+    ui.lineEdit_9.setText(Files)
     print(Files)
 
     file = QFile(Files)
-    #读取文件
+    # 读取文件
     if file.open(QIODevice.ReadOnly):
-        array = file.readLine()
-        hex_data = array.data().hex()   
-        hex_newlines = '\n'.join([hex_data[i:i+32] for i in range(0, len(hex_data), 32)])  # 每32个字符后换行
-        ui.textEdit.setText(hex_newlines)
+        all_hex_data = []  # 用于存储所有行的原始十六进制数据
+        change_hex_data = []     # 用于存储转换过后的数据
+        while not file.atEnd():
+            array = file.readLine()  # 逐行读取
+            data = array.data()
+            hex_data = array.data().hex()
+            all_hex_data.append(hex_data)
+            # 检测数据类型并进行处理
+            processed_data = ''
+            for byte in data:
+                # 如果是ASCII字符范围（通常可打印字符）
+                if 0x20 <= byte <= 0x7E:  # 字符的范围
+                    processed_data += chr(byte)
+                else:
+                    processed_data += '_'  # 非字符数据，转换为下划线
 
-        print(len(array.data()))
+            change_hex_data.append(processed_data)  # 将处理后的结果存储在列表中
+
+        print(f"Total lines processed: {len(all_hex_data)}")  # 打印处理的行数
+
         file.close()
+
+        convert_and_send_init_data(Files)
     else:
         print("未选择文件")
 
 
-#写入文件
-def writeFile():
-    Files = ui.lineEdit.text()
-    file = QFile(Files)
-    if file.open(QIODevice.WriteOnly):
-        text = ui.textEdit.toPlainText()
-        file.write(text.encode('utf-8'))
-        file.close()
-        print("写入成功")
+def convert_and_send_init_data(file_name):   # 处理数据
+    NAD = "7F"
+    first_frame_PCI = "10"
+    first_frame_LEN = "82"
+    first_frame_SID = "36"
+    frame_ID = "01"
+    # 打开文件
+    with open(file_name, "rb") as f:
+        binary_data = f.read()
+
+    # 转换为16进制
+    hex_data = binary_data.hex().upper()
+
+    # 一行128字节数据
+    lines = [hex_data[i:i + 256] for i in range(0, len(hex_data), 256)]
+
+    # 存储最后的数据
+    global finish_data
+
+    for line in lines:
+        # 确保一行128字节数据，不够补0
+
+        if len(line) < 256:
+            line = line.ljust(256, '0')
+        # 将每 2 个十六进制字符转换回字节
+        line_bytes = bytes.fromhex(line)
+        # 首帧格式
+        first_frame_data = [
+            NAD,
+            first_frame_PCI,
+            first_frame_LEN,
+            first_frame_SID,
+            frame_ID,
+            ' '.join([line_bytes[0:1].hex().upper(), line_bytes[1:2].hex().upper(), line_bytes[2:3].hex().upper()]) # D1, D2, D3
+        ]
+        finish_data.append(" ".join(first_frame_data))
+
+        # 连续帧格式
+        pci_counter = 0x21  # 首个连续帧PCI
+        # ID格式
+        continue_frame_ID = int(frame_ID,16)+1
+        if continue_frame_ID > 255 :
+            continue_frame_ID = 0
+        frame_ID = "{:02X}".format(continue_frame_ID)
+        for i in range(3, 128, 6):
+            # D1-D6，如果小于 6 字节，用 FF 填充
+            data_chunk = line_bytes[i:i + 6]
+            if len(data_chunk) < 6:
+                data_chunk = data_chunk.ljust(6, b'\xFF')
+
+            pci = f"{pci_counter:02X}"
+            consecutive_frame_data = [NAD, pci] + [data_chunk[j:j + 1].hex().upper() for j in range(6)]
+            finish_data.append(" ".join(consecutive_frame_data))
+
+            # PCI的格式
+            pci_counter += 1
+            if pci_counter > 0x2F:
+                pci_counter = 0x20
 
 
-#关闭设备
+def send_frame():
+    # 发送数据
+    # 最后的输出帧
+    for frame in finish_data:
+        #print(f"3C: {frame}")
+        LINMsg = LIN_MSG()
+        ID = "3C"
+        LINMsg.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
+        LINMsg.DataLen = 8
+        message = frame
+        ui.textEdit_3.setText(message)  # 将数据显示在文本框中
+        words = message.split()
+        formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
+        for i in range(0, LINMsg.DataLen):
+            LINMsg.Data[i] = int(formatted_words[i], 16)
+        ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
+        if ret != LIN_SUCCESS:
+            print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
+            sys.exit(app.exec_())
+        else:
+            print("M2S", "[0x%02X] " % LINMsg.ID, end='')
+            for i in range(LINMsg.DataLen):
+                print("0x%02X " % LINMsg.Data[i], end='')
+            print("")
+        sleep(0.01)
+
+
+# 关闭设备
 def Close():
     ret = USB_CloseDevice(DevHandles[0])
     if(bool(ret)):
@@ -157,7 +253,7 @@ if __name__ == "__main__":
 
     LINMasterIndex = 0
     DevHandles = (c_uint * 20)()
-    # Scan device
+    #Scan device
     ret = USB_ScanDevice(byref(DevHandles))
     if(ret == 0):
         print("No device connected!")
@@ -210,12 +306,17 @@ if __name__ == "__main__":
     else:
         print("Send LIN break success!")
     sleep(0.01)
-    
+
+
+
+
     ui.pushButton.clicked.connect(WriteMessage)
     ui.pushButton_3.clicked.connect(ReadMessage)
     ui.pushButton_2.clicked.connect(Close)
     ui.pushButton_4.clicked.connect(Old_Version)
     ui.pushButton_5.clicked.connect(New_Version)
+    ui.pushButton_6.clicked.connect(OpenFile)
+    ui.pushButton_7.clicked.connect(send_frame)
 
     sys.exit(app.exec_())
 
