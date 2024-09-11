@@ -101,6 +101,43 @@ def New_Version():
         ui.lineEdit_8.setText(ascll_message)
         print("HW:",ascll_message)
 
+#打开文件夹
+def OpenFileFolder(self):
+    FileFolder=QFileDialog.getExistingDirectory(None,'选择文件夹','C:\\')
+    ui.lineEdit.setText(FileFolder)
+    print(FileFolder)
+
+#打开文件
+def OpenFile(self):
+    Files,_ = QFileDialog.getOpenFileName(None, '打开列表文件', 'C:\\', 'LIN List File (*.bin);;MLX LIN List File (*.lin);;Any file (*)')
+    ui.lineEdit.setText(Files)
+    print(Files)
+
+    file = QFile(Files)
+    #读取文件
+    if file.open(QIODevice.ReadOnly):
+        array = file.readLine()
+        hex_data = array.data().hex()   
+        hex_newlines = '\n'.join([hex_data[i:i+32] for i in range(0, len(hex_data), 32)])  # 每32个字符后换行
+        ui.textEdit.setText(hex_newlines)
+
+        print(len(array.data()))
+        file.close()
+    else:
+        print("未选择文件")
+
+
+#写入文件
+def writeFile():
+    Files = ui.lineEdit.text()
+    file = QFile(Files)
+    if file.open(QIODevice.WriteOnly):
+        text = ui.textEdit.toPlainText()
+        file.write(text.encode('utf-8'))
+        file.close()
+        print("写入成功")
+
+
 #关闭设备
 def Close():
     ret = USB_CloseDevice(DevHandles[0])
