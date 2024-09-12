@@ -12,6 +12,7 @@ import sys
 from time import sleep
 from usb_device import *
 from usb2lin import *
+import threading
 
 finish_data = []
 
@@ -33,17 +34,35 @@ def WriteMessage():
     formatted_words = ['0x' + word for word in words]  #对每个切片数据前加入'0x'
     for i in range(0,LINMsg.DataLen):
         LINMsg.Data[i] = int(formatted_words[i],16)
-    ret = LIN_Write(DevHandles[0],LINMasterIndex,byref(LINMsg),1)
-    if ret != LIN_SUCCESS:
-        print("LIN ID[0x%02X] write data failed!"%LINMsg.ID)
-        sys.exit(app.exec_())
-    else:
-        print("M2S","[0x%02X] "%LINMsg.ID,end='')
-        for i in range(LINMsg.DataLen):
-            print("0x%02X "%LINMsg.Data[i],end='')
-        print("")
-    sleep(0.01)
-    ClearCache()
+    # 发送LIN帧
+    i = 1
+    while i < 10:  # 无限循环发送帧，直到手动停止
+        ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
+        if ret != LIN_SUCCESS:
+            print(f"LIN ID[0x{LINMsg.ID:02X}] write data failed!")
+            sys.exit(app.exec_())
+        else:
+            print("M2S", f"[0x{LINMsg.ID:02X}] ", end='')
+            for i in range(LINMsg.DataLen):
+                print(f"0x{LINMsg.Data[i]:02X} ", end='')
+            print("")
+        # 延时控制周期
+        sleep(100 / 1000.0)  # 将毫秒转换为秒延时
+         # 清理缓存
+        ClearCache()
+        ReadMessage()
+        i = i + 1
+    # ret = LIN_Write(DevHandles[0],LINMasterIndex,byref(LINMsg),1)
+    # if ret != LIN_SUCCESS:
+    #     print("LIN ID[0x%02X] write data failed!"%LINMsg.ID)
+    #     sys.exit(app.exec_())
+    # else:
+    #     print("M2S","[0x%02X] "%LINMsg.ID,end='')
+    #     for i in range(LINMsg.DataLen):
+    #         print("0x%02X "%LINMsg.Data[i],end='')
+    #     print("")
+    # sleep(1)
+    # ClearCache()
 
 
 # 读数据
@@ -58,6 +77,7 @@ def ReadMessage():
         print("LIN ID[0x%02X] read data failed!" % LINMsg.ID)
         # 显示错误信息给用户，‌而不是退出程序
         ui.textEdit_2.setText("Error reading LIN data.")
+        return None
     else:
         message= ""
         for i in range(LINMsg.DataLen-1):
@@ -71,6 +91,7 @@ def ReadMessage():
             first_message += display_message  # 合并ASCII码
             first_message += " "
         ui.textEdit_2.setText(first_message)  # 更新UI显示合并后的ASCII码
+        return message
 
 def Old_Version():
     ASCllLen=len(first_message)
@@ -148,7 +169,7 @@ def OpenFile(self):
 
 
 def convert_and_send_init_data(file_name):   # 处理数据
-    NAD = "7F"
+    NAD = "01"
     first_frame_PCI = "10"
     first_frame_LEN = "82"
     first_frame_SID = "36"
@@ -206,6 +227,11 @@ def convert_and_send_init_data(file_name):   # 处理数据
             if pci_counter > 0x2F:
                 pci_counter = 0x20
 
+#解密函数
+def DiagSvcSecAccess_SaccKey(seed):
+    key_result = (((seed >> 1) ^ seed) << 3) ^ (seed >> 2)
+    sacckey = key_result ^ 0xFFFF
+    return sacckey
 
 def send_frame():
     # 发送数据
@@ -216,9 +242,109 @@ def send_frame():
         ID = "3C"
         LINMsg.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
         LINMsg.DataLen = 8
-        message = frame
-        ui.textEdit_3.setText(message)  # 将数据显示在文本框中
-        words = message.split()
+        #message = frame
+         # 扩展+安全校验
+        check_words = [
+            "7F 02 10 03 FF FF FF FF",
+            "7F 02 27 01 FF FF FF FF",
+            "7F 04 27 02 F9 AD FF FF",
+            "7F 02 10 02 FF FF FF FF",
+            "7F 02 27 01 FF FF FF FF",
+            "7F 04 27 02 F9 AD FF FF",
+            "7F 10 0E 31 01 DF FF 44",
+            "7F 21 00 01 58 00 00 01",
+            "7F 22 C9 6C 00 FF FF FF",
+            "7F 04 31 03 DF FF FF FF",
+            "7F 10 0B 34 00 44 00 01",
+            "7F 21 58 00 00 01 C9 6C"
+        ]
+        resp_words = [
+            "01 02 50 03 FF FF FF FF",
+            "01 04 67 01 00 8B FF FF",
+            "01 02 67 02 FF FF FF FF",
+            "01 02 50 02 FF FF FF FF",
+            "01 04 67 01 00 8B FF FF",
+            "01 02 67 02 FF FF FF FF",
+            "",  #不需要       #如果第二位为10，就继续执行发送报文，直到第二位不在范围0x20~0x2F（包含20和2F）里,进行接收响应
+            "01 06 71 01 DF FF 01 F4",
+            "01 04 71 03 DF FF FF FF",
+            "01 04 74 20 00 82 FF FF"
+        ]
+            # 遍历 check_words
+        for index, word in enumerate(check_words):
+            # 发送报文
+            wd = word.split(' ')
+            formatted_words = ['0x' + w for w in wd]  # 对每个切片数据前加入'0x'
+            for i in range(0, LINMsg.DataLen):
+                LINMsg.Data[i] = int(formatted_words[i], 16)
+    
+            # 正确响应报文
+            res = resp_words[index].split(' ')
+            formatted_resp = " ".join(['0x' + r for r in res]).strip().encode('utf-8')  # 对每个切片数据前加入'0x'
+    
+            flag = True
+            while flag:
+                ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
+                if ret != LIN_SUCCESS:
+                    print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
+                    sys.exit(app.exec_())
+                else:
+                    print("M2S", "[0x%02X] " % LINMsg.ID, end='')
+                    for i in range(LINMsg.DataLen):
+                        print("0x%02X " % LINMsg.Data[i], end='')
+                    print("")
+    
+                sleep(0.1)
+                ClearCache()
+    
+                # 接收报文并转换为字符串
+                ret = ReadMessage().strip().encode("utf-8")  # 将字节转换为字符串
+                print("==============")
+                print(f"Received: {ret}")
+                print(f"Expected: {formatted_resp.decode('utf-8')}")
+                print(f"Match: {ret == formatted_resp.decode('utf-8')}")
+                print("==============")
+    
+                # 如果报文匹配，停止循环
+                if ret.decode('utf-8') == formatted_resp:
+                    flag = False
+    
+                # 处理数组的第二个报文 (index == 1)
+                if index == 1:
+                    # 将 ret 拆分为字符串列表
+                    ret_split = ret.split().encode('utf-8')
+    
+                    # 提取第五位和第六位，并去掉 '0x' 前缀
+                    seed_part_5 = int(ret_split[4].replace('0x', ''), 16)  # 去掉 '0x' 前缀并转换为整数
+                    seed_part_6 = int(ret_split[5].replace('0x', ''), 16)  # 去掉 '0x' 前缀并转换为整数
+    
+                    seed = int(seed_part_5 + seed_part_6, 16)
+                    decrypted_key = DiagSvcSecAccess_SaccKey(seed)  # 调用解密函数
+                    print(f"Decrypted key: 0x{decrypted_key:04X}")  # 输出解密后的密钥
+
+    
+                    # 将解密后的值更新到第三个报文的第五位和第六位
+                    third_message = check_words[2].split(' ')  # 获取第三个报文
+                    third_message[4] = f"{(decrypted_key >> 8):02X}"  # 替换第五位
+                    third_message[5] = f"{(decrypted_key & 0xFF):02X}"  # 替换第六位
+    
+                    # 将修改后的第三个报文重新组合
+                    updated_third_message = " ".join(third_message)
+                    print(f"Updated third message: {updated_third_message}")
+    
+                    # 再次发送第三个报文
+                    wd = updated_third_message.split(' ')
+                    formatted_words = ['0x' + w for w in wd]  # 对每个切片数据前加入'0x'
+                    for i in range(0, LINMsg.DataLen):
+                        LINMsg.Data[i] = int(formatted_words[i], 16)
+    
+                    # 再次发送修改后的第三个报文
+                    LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
+                    print(f"Third message with decrypted key sent: {updated_third_message}")
+    
+                    flag = False  # 停止循环，表示任务完成
+        ui.textEdit_3.setText(frame)  # 将数据显示在文本框中
+        words = frame.split()
         formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
         for i in range(0, LINMsg.DataLen):
             LINMsg.Data[i] = int(formatted_words[i], 16)
@@ -229,9 +355,29 @@ def send_frame():
         else:
             print("M2S", "[0x%02X] " % LINMsg.ID, end='')
             for i in range(LINMsg.DataLen):
-                print("0x%02X " % LINMsg.Data[i], end='')
+                print("0x%02X "%LINMsg.Data[i],end='')
             print("")
-        sleep(0.01)
+
+        LINMsg = LIN_MSG()
+        # LINMsg.ID = 0x01
+        ID = "3D"
+        LINMsg.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
+        LINMsg.DataLen = 8
+        #message = frame
+        ui.textEdit_3.setText(frame)  # 将数据显示在文本框中
+        words = frame.split()
+        formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
+        ret = LIN_Read(DevHandles[0],LINMasterIndex,byref(LINMsg),1)
+        if ret != LIN_SUCCESS:
+            print("LIN read data failed!")
+        # exit()
+        else:
+            print("S2M","[0x%02X] "%LINMsg.ID,end='')
+            for i in range(LINMsg.DataLen):
+                print("0x%02X "%LINMsg.Data[i],end='')
+        print("")
+
+        sleep(0.1)
 
 
 # 关闭设备
