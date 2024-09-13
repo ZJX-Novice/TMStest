@@ -280,10 +280,27 @@ def send_frame():
     
             # 正确响应报文
             res = resp_words[index].split(' ')
-            formatted_resp = " ".join(['0x' + r for r in res]).strip().encode('utf-8')  # 对每个切片数据前加入'0x'
+            formatted_resp = " ".join(['0x' + r for r in res]).strip()#.encode('utf-8')  # 对每个切片数据前加入'0x'
     
             flag = True
             while flag:
+                # todo: 判断需要发送的帧是否包含首帧
+                send_1 = get_frame(formatted_words, 1)
+                if 是10:
+                    while True:
+                        # 持续发送后续报文
+
+                        # 判断循环终止
+                        if 不是20~2f范围内的
+                            # 收到响应
+                            flag = False
+                            break;
+                else:    
+                    # 调整下方代码缩进
+
+
+
+
                 ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
                 if ret != LIN_SUCCESS:
                     print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
@@ -298,25 +315,20 @@ def send_frame():
                 ClearCache()
     
                 # 接收报文并转换为字符串
-                ret = ReadMessage().strip().encode("utf-8")  # 将字节转换为字符串
+                ret = ReadMessage().strip()#.encode("utf-8")  # 将字节转换为字符串
                 print("==============")
                 print(f"Received: {ret}")
-                print(f"Expected: {formatted_resp.decode('utf-8')}")
-                print(f"Match: {ret == formatted_resp.decode('utf-8')}")
-                print("==============")
-    
-                # 如果报文匹配，停止循环
-                if ret.decode('utf-8') == formatted_resp:
-                    flag = False
+                print(f"Expected: {formatted_resp}")
+                print(f"Match: {ret == formatted_resp}")
+                print("==============") 
     
                 # 处理数组的第二个报文 (index == 1)
-                if index == 1:
-                    # 将 ret 拆分为字符串列表
-                    ret_split = ret.split().encode('utf-8')
-    
-                    # 提取第五位和第六位，并去掉 '0x' 前缀
-                    seed_part_5 = int(ret_split[4].replace('0x', ''), 16)  # 去掉 '0x' 前缀并转换为整数
-                    seed_part_6 = int(ret_split[5].replace('0x', ''), 16)  # 去掉 '0x' 前缀并转换为整数
+                if index == 1 or index == 4:
+                    if ret.strip() == '':
+                        continue
+                    # 获取第 5 6 位 帧，去掉 0x
+                    seed_part_5 = get_frame(ret, 4)
+                    seed_part_6 = get_frame(ret, 5)
     
                     seed = int(seed_part_5 + seed_part_6, 16)
                     decrypted_key = DiagSvcSecAccess_SaccKey(seed)  # 调用解密函数
@@ -327,22 +339,15 @@ def send_frame():
                     third_message = check_words[2].split(' ')  # 获取第三个报文
                     third_message[4] = f"{(decrypted_key >> 8):02X}"  # 替换第五位
                     third_message[5] = f"{(decrypted_key & 0xFF):02X}"  # 替换第六位
-    
-                    # 将修改后的第三个报文重新组合
-                    updated_third_message = " ".join(third_message)
-                    print(f"Updated third message: {updated_third_message}")
-    
-                    # 再次发送第三个报文
-                    wd = updated_third_message.split(' ')
-                    formatted_words = ['0x' + w for w in wd]  # 对每个切片数据前加入'0x'
-                    for i in range(0, LINMsg.DataLen):
-                        LINMsg.Data[i] = int(formatted_words[i], 16)
-    
-                    # 再次发送修改后的第三个报文
-                    LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
-                    print(f"Third message with decrypted key sent: {updated_third_message}")
-    
-                    flag = False  # 停止循环，表示任务完成
+                    # 更新请求报文
+                    set_frame(check_words, 2, " ".join(third_message))
+                    print(f"Updated third message: {check_words}")
+                    # 第 2 5 条发送报文无需验证
+                    flag = False
+                else:
+                    # 如果报文匹配，停止循环
+                    if ret == formatted_resp:
+                        flag = False
         ui.textEdit_3.setText(frame)  # 将数据显示在文本框中
         words = frame.split()
         formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
@@ -379,7 +384,15 @@ def send_frame():
 
         sleep(0.1)
 
-
+# 获取指定位置的帧
+def get_frame(words, index):
+    words_split = words.split(' ')
+    return words_split[index].replace('0x', '')
+# 更新帧的指定位置设置为指定值
+def set_frame(frame,index,value):
+    for i in range(len(frame)):
+        if i == index:
+            frame[i] = value
 # 关闭设备
 def Close():
     ret = USB_CloseDevice(DevHandles[0])
