@@ -25,6 +25,9 @@ def ClearCache():
 #写数据
 def WriteMessage():
     LINMsg = LIN_MSG()
+    if ui.lineEdit_2.text()=="":
+        ui.textEdit.setText("Please input message!")
+        return
     ID=ui.lineEdit_2.text()
     LINMsg.ID = int(ID,16)  #将文本框中获取的内容转换为16进制
     LINMsg.DataLen = 8
@@ -257,7 +260,7 @@ def send_frame():
             "01 21 00 01 58 00 00 01",
             "01 22 C9 6C 00 FF FF FF",
             "01 04 31 03 DF FF FF FF", 
-            "01 10 0B 34 00 44 00 01",      
+            "01 10 0B 34 00 44 00 01",
             "01 21 58 00 00 01 C9 6C"
         ]
         resp_words = [
@@ -268,8 +271,11 @@ def send_frame():
             "01 04 67 01 00 8B FF FF",
             "01 02 67 02 FF FF FF FF",
 #如果第二位pci为10，就继续执行发送报文，直到第二位不在范围0x20~0x2F（包含20和2F）里,进行接收响应
+            "",
+            "",
             "01 06 71 01 DF FF 01 F4",
             "01 04 71 03 DF FF FF FF",
+            "",
             "01 04 74 20 00 82 FF FF"
         ]
             # 遍历 check_words
@@ -286,6 +292,15 @@ def send_frame():
     
             flag = True
             while flag:
+                send_1=hex(int(get_frame(word, 1),16))
+                if(send_1=='0x10'):
+                    print("发送首帧")
+                    flag = False
+                if '0x20'<=send_1<='0x2F':
+                    print("发送续帧")
+                    flag=False
+                    
+                print("===========================")
                 ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
                 if ret != LIN_SUCCESS:
                     print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
