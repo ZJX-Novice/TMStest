@@ -26,7 +26,7 @@ def ClearCache():
 def WriteMessage():
     LINMsg = LIN_MSG()
     if ui.lineEdit_2.text()=="":
-        ui.textEdit.setText("Please input message!")
+        ui.textEdit.setText("请输入请求报头!")
         return
     ID=ui.lineEdit_2.text()
     LINMsg.ID = int(ID,16)  #将文本框中获取的内容转换为16进制
@@ -72,6 +72,9 @@ def WriteMessage():
 def ReadMessage():
     global first_message  # 全局变量存储首次ASCII码
     LINMsg = LIN_MSG()
+    if ui.lineEdit_3.text()=="":
+        ui.textEdit_2.setText("请输入响应报头!")
+        return
     ID = ui.lineEdit_3.text()
     LINMsg.ID = int(ID, 16)
     LINMsg.DataLen = 8
@@ -283,7 +286,6 @@ def send_frame():
         for i in range(0, LINMsg.DataLen):
             LINMsg.Data[i] = int(formatted_words[i], 16)
 
-        # 正确响应报文
         res = resp_words[index].split(' ')
         formatted_resp = " ".join([ r for r in res]).strip()#.encode('utf-8')  # 对每个切片数据前加入'0x'
 
@@ -307,8 +309,11 @@ def send_frame():
                     print("0x%02X " % LINMsg.Data[i], end='')
                 print("")
             sleep(0.1)
-            ClearCache()
+            #ClearCache()
             # 接收报文并去掉空格
+            if ui.lineEdit_3.text()=="":
+                ui.textEdit_2.setText("请输入响应报头!")
+                return
             res = ReadMessage().strip()
             
             if res == formatted_resp:
@@ -321,19 +326,20 @@ def send_frame():
                 if res.strip() == '':
                     continue
                 # 获取第 5 6 位 帧，去掉 0x
-                seed_part_5 = get_frame(res, 4)
-                seed_part_6 = get_frame(res, 5)
-                seed = int(seed_part_5 + seed_part_6, 16)
-                decrypted_key = DiagSvcSecAccess_SaccKey(seed)  # 调用解密函数
-                print(f"Decrypted key: 0x{decrypted_key:04X}")  # 输出解密后的密钥
+                seed_part2_5 = get_frame(res, 4)
+                seed_part2_6 = get_frame(res, 5)
+                seed = int(seed_part2_5 + seed_part2_6, 16)
+                decrypted_key2 = DiagSvcSecAccess_SaccKey(seed)  # 调用解密函数
+                print(f"Decrypted key: 0x{decrypted_key2:04X}")  # 输出解密后的密钥
                 # 将解密后的值更新到第三个报文的第五位和第六位
                 third_message = check_words[2].split(' ')  # 获取第三个报文
-                third_message[4] = f"{(decrypted_key >> 8):02X}"  # 替换第五位
-                third_message[5] = f"{(decrypted_key & 0xFF):02X}"  # 替换第六位
+                third_message[4] = f"{(decrypted_key2 >> 8):02X}"  # 替换第五位
+                third_message[5] = f"{(decrypted_key2 & 0xFF):02X}"  # 替换第六位
                 # 更新请求报文
                 set_frame(check_words, 2, " ".join(third_message))
                 print(f"Updated third message: {check_words}")
                 # 第 2 5 条发送报文无需验证
+                print("解密成功！")
                 flag = False
             else:
                 # 如果报文匹配，停止循环
@@ -344,19 +350,20 @@ def send_frame():
                 if res.strip() == '':
                     continue
                 # 获取第 5 6 位 帧，去掉 0x
-                seed_part_5 = get_frame(res, 4)
-                seed_part_6 = get_frame(res, 5)
-                seed = int(seed_part_5 + seed_part_6, 16)
-                decrypted_key = DiagSvcSecAccess_SaccKey(seed)  # 调用解密函数
-                print(f"Decrypted key: 0x{decrypted_key:04X}")  # 输出解密后的密钥
-                # 将解密后的值更新到第三个报文的第五位和第六位
-                third_message = check_words[5].split(' ')  # 获取第六个报文
-                third_message[4] = f"{(decrypted_key >> 8):02X}"  # 替换第五位
-                third_message[5] = f"{(decrypted_key & 0xFF):02X}"  # 替换第六位
+                seed_part5_5 = get_frame(res, 4)
+                seed_part5_6 = get_frame(res, 5)
+                seed = int(seed_part5_5 + seed_part5_6, 16)
+                decrypted_key5 = DiagSvcSecAccess_SaccKey(seed)  # 调用解密函数
+                print(f"Decrypted key: 0x{decrypted_key5:04X}")  # 输出解密后的密钥
+                # 将解密后的值更新到第五个报文的第五位和第六位
+                fifth_message = check_words[5].split(' ')  # 获取第六个报文
+                fifth_message[4] = f"{(decrypted_key5 >> 8):02X}"  # 替换第五位
+                fifth_message[5] = f"{(decrypted_key5 & 0xFF):02X}"  # 替换第六位
                 # 更新请求报文
-                set_frame(check_words, 5, " ".join(third_message))
+                set_frame(check_words, 5, " ".join(fifth_message))
                 print(f"Updated third message: {check_words}")
                 # 第 5 条发送报文无需验证
+                print("解密成功！")
                 flag = False
             else:
                 # 如果报文匹配，停止循环
@@ -367,7 +374,11 @@ def send_frame():
     # 最后的输出帧
     print("安全校验成功，开始烧录")
     for frame in finish_data:
-        ui.textEdit_3.setText(frame)  # 将数据显示在文本框中
+        ui.textEdit.setText(frame)  # 将数据显示在文本框中
+        LINMsg = LIN_MSG()
+        ID_Write = "3C"
+        LINMsg.ID = int(ID_Write, 16)  # 将文本框中获取的内容转换为16进制
+        LINMsg.DataLen = 8
         words = frame.split(' ')
         formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
         for i in range(0, LINMsg.DataLen):
@@ -375,32 +386,34 @@ def send_frame():
         ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
         if ret != LIN_SUCCESS:
             print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
-            sys.exit(app.exec_())
+            ui.textEdit.setText("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
+            return
         else:
             print("M2S", "[0x%02X] " % LINMsg.ID, end='')
             for i in range(LINMsg.DataLen):
                 print("0x%02X "%LINMsg.Data[i],end='')
             print("")
+        sleep(0.1)
+        #读数据
         LINMsgRead = LIN_MSG()
-        # LINMsg.ID = 0x01
-        ID = "3D"
-        LINMsgRead.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
+        ID_Read = "3D"
+        LINMsgRead.ID = int(ID_Read, 16)  # 将文本框中获取的内容转换为16进制
         LINMsgRead.DataLen = 8
-        #message = frame
-        ui.textEdit_3.setText(frame)  # 将数据显示在文本框中
+        ui.textEdit_2.setText(frame)  # 将数据显示在文本框中
         words = frame.split()
         formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
         ret = LIN_Read(DevHandles[0],LINMasterIndex,byref(LINMsgRead),1)
         if ret != LIN_SUCCESS:
-            print("LIN read data failed!")
+            print("LIN ID[0x%02X] Read data failed!" % LINMsgRead.ID)
+            ui.textEdit_2.setText("LIN ID[0x%02X] Read data failed!" % LINMsgRead.ID)
+            return
         # exit()
         else:
             print("S2M","[0x%02X] "%LINMsgRead.ID,end='')
             for i in range(LINMsgRead.DataLen-1):
                 print("0x%02X "%LINMsgRead.Data[i],end='')
-        print("")
-
-        sleep(0.1)
+            print("")
+        #sleep(0.01)
 
 # 获取指定位置的帧
 def get_frame(words, index):
