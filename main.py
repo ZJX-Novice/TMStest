@@ -37,24 +37,6 @@ def WriteMessage():
     formatted_words = ['0x' + word for word in words]  #对每个切片数据前加入'0x'
     for i in range(0,LINMsg.DataLen):
         LINMsg.Data[i] = int(formatted_words[i],16)
-    # 发送LIN帧
-    # i = 1
-    # while i < 10:  # 无限循环发送帧，直到手动停止
-    #     ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
-    #     if ret != LIN_SUCCESS:
-    #         print(f"LIN ID[0x{LINMsg.ID:02X}] write data failed!")
-    #         sys.exit(app.exec_())
-    #     else:
-    #         print("M2S", f"[0x{LINMsg.ID:02X}] ", end='')
-    #         for i in range(LINMsg.DataLen):
-    #             print(f"0x{LINMsg.Data[i]:02X} ", end='')
-    #         print("")
-    #     # 延时控制周期
-    #     sleep(100 / 1000.0)  # 将毫秒转换为秒延时
-    #      # 清理缓存
-    #     ClearCache()
-    #     ReadMessage()
-    #     i = i + 1
     ret = LIN_Write(DevHandles[0],LINMasterIndex,byref(LINMsg),1)
     if ret != LIN_SUCCESS:
         print("LIN ID[0x%02X] write data failed!"%LINMsg.ID)
@@ -297,7 +279,7 @@ def send_frame():
                 flag = False
             if '0x20'<=send_1<='0x2F':
                 print("发送续帧")
-                flag=False
+                flag = False
                 
             ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
             if ret != LIN_SUCCESS:
@@ -361,14 +343,14 @@ def send_frame():
                 fifth_message[5] = f"{(decrypted_key5 & 0xFF):02X}"  # 替换第六位
                 # 更新请求报文
                 set_frame(check_words, 5, " ".join(fifth_message))
-                print(f"Updated third message: {check_words}")
+                print(f"Updated fifth message: {check_words}")
                 # 第 5 条发送报文无需验证
                 print("解密成功！")
                 flag = False
             else:
                 # 如果报文匹配，停止循环
                 if res == formatted_resp:
-                    print("解密成功！")
+                    print("解密成功2！")
                     flag = False
     # 发送数据
     # 最后的输出帧
@@ -413,7 +395,7 @@ def send_frame():
             for i in range(LINMsgRead.DataLen-1):
                 print("0x%02X "%LINMsgRead.Data[i],end='')
             print("")
-        #sleep(0.01)
+        #sleep(0.1)
 
 # 获取指定位置的帧
 def get_frame(words, index):
@@ -447,6 +429,7 @@ if __name__ == "__main__":
     ret = USB_ScanDevice(byref(DevHandles))
     if(ret == 0):
         print("No device connected!")
+        ui.textEdit_2.setText("No device connected!")
         sys.exit(app.exec_())
     else:
         print("Have %d device connected!"%ret)
@@ -456,6 +439,7 @@ if __name__ == "__main__":
         print("Open device success!")
     else:
         print("Open device faild!")
+        ui.textEdit_2.setText("Open device faild!")
         sys.exit(app.exec_())
     # Get device infomation
     USB2XXXInfo = DEVICE_INFO()
@@ -474,6 +458,7 @@ if __name__ == "__main__":
         print("--Function String: %s"%bytes(USB2XXXFunctionString.value).decode('ascii'))
     else:
         print("Get device infomation faild!")
+        ui.textEdit_2.setText("Get device infomation faild!")
         sys.exit(app.exec_())
 
     # 初始化配置主LIN
