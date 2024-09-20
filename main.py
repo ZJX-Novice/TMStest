@@ -1,4 +1,4 @@
-from TMS import Ui_MainWindow
+from Ui_TMS import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication,QMainWindow
 from PyQt5.QtWidgets import QTextEdit
 from PyQt5.QtWidgets import *
@@ -14,6 +14,7 @@ from usb_device import *
 from usb2lin import *
 import threading
 
+
 finish_data = []
 
 #清除缓存
@@ -26,7 +27,7 @@ def ClearCache():
 def WriteMessage():
     LINMsg = LIN_MSG()
     if ui.lineEdit_2.text()=="":
-        ui.textEdit.setText("请输入请求报头!")
+        ui.textEdit.setText("请输入请求ID!")
         return
     ID=ui.lineEdit_2.text()
     LINMsg.ID = int(ID,16)  #将文本框中获取的内容转换为16进制
@@ -55,7 +56,7 @@ def ReadMessage():
     global first_message  # 全局变量存储首次ASCII码
     LINMsg = LIN_MSG()
     if ui.lineEdit_3.text()=="":
-        ui.textEdit_2.setText("请输入响应报头!")
+        ui.textEdit_2.setText("请输入响应ID!")
         return
     ID = ui.lineEdit_3.text()
     LINMsg.ID = int(ID, 16)
@@ -280,7 +281,7 @@ def send_frame():
             if '0x20'<=send_1<='0x2F':
                 print("发送续帧")
                 flag = False
-                
+
             ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
             if ret != LIN_SUCCESS:
                 print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
@@ -294,7 +295,7 @@ def send_frame():
             #ClearCache()
             # 接收报文并去掉空格
             if ui.lineEdit_3.text()=="":
-                ui.textEdit_2.setText("请输入响应报头!")
+                ui.textEdit_2.setText("请输入响应ID!")
                 return
             res = ReadMessage().strip()
             
@@ -415,7 +416,6 @@ def Close():
         print("Close device faild!")
     sys.exit(app.exec_())
 
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     MainWindow = QMainWindow()
@@ -428,37 +428,64 @@ if __name__ == "__main__":
     #Scan device
     ret = USB_ScanDevice(byref(DevHandles))
     if(ret == 0):
-        print("No device connected!")
-        ui.textEdit_2.setText("No device connected!")
+        # print("No device connected!")
+        QMessageBox.critical(MainWindow,"提示","没有设备连接，请重启！")
+        # ui.textEdit_3.insertPlainText("No device connected!")
+        # ui.textEdit_3.insertPlainText('\n')
         sys.exit(app.exec_())
     else:
-        print("Have %d device connected!"%ret)
+        # print("Have %d device connected!"%ret)
+        ui.textEdit_3.insertPlainText("Have %d device connected!"%ret)
+        ui.textEdit_3.insertPlainText('\n')
     # Open device
+
     ret = USB_OpenDevice(DevHandles[0])
     if(bool(ret)):
-        print("Open device success!")
+        # print("Open device success!")
+        ui.textEdit_3.insertPlainText("Open device success!")    
+        ui.textEdit_3.insertPlainText('\n')    
     else:
-        print("Open device faild!")
-        ui.textEdit_2.setText("Open device faild!")
+        # print("Open device faild!")
+        ui.textEdit_3.insertPlainText("Open device faild!")       
+        ui.textEdit_3.insertPlainText('\n') 
         sys.exit(app.exec_())
     # Get device infomation
     USB2XXXInfo = DEVICE_INFO()
     USB2XXXFunctionString = (c_char * 256)()
     ret = DEV_GetDeviceInfo(DevHandles[0],byref(USB2XXXInfo),byref(USB2XXXFunctionString))
     if(bool(ret)):
-        print("USB2XXX device infomation:")
-        print("--Firmware Name: %s"%bytes(USB2XXXInfo.FirmwareName).decode('ascii'))
-        print("--Firmware Version: v%d.%d.%d"%((USB2XXXInfo.FirmwareVersion>>24)&0xFF,(USB2XXXInfo.FirmwareVersion>>16)&0xFF,USB2XXXInfo.FirmwareVersion&0xFFFF))
-        print("--Hardware Version: v%d.%d.%d"%((USB2XXXInfo.HardwareVersion>>24)&0xFF,(USB2XXXInfo.HardwareVersion>>16)&0xFF,USB2XXXInfo.HardwareVersion&0xFFFF))
-        print("--Build Date: %s"%bytes(USB2XXXInfo.BuildDate).decode('ascii'))
-        print("--Serial Number: ",end='')
+        # print("USB2XXX device infomation:")
+        # print("--Firmware Name: %s"%bytes(USB2XXXInfo.FirmwareName).decode('ascii'))
+        # print("--Firmware Version: v%d.%d.%d"%((USB2XXXInfo.FirmwareVersion>>24)&0xFF,(USB2XXXInfo.FirmwareVersion>>16)&0xFF,USB2XXXInfo.FirmwareVersion&0xFFFF))
+        # print("--Hardware Version: v%d.%d.%d"%((USB2XXXInfo.HardwareVersion>>24)&0xFF,(USB2XXXInfo.HardwareVersion>>16)&0xFF,USB2XXXInfo.HardwareVersion&0xFFFF))
+        # print("--Build Date: %s"%bytes(USB2XXXInfo.BuildDate).decode('ascii'))
+        # print("--Serial Number: ",end='')
+        # print("")
+        # print("--Function String: %s"%bytes(USB2XXXFunctionString.value).decode('ascii'))
+        ui.textEdit_3.insertPlainText("USB2XXX device infomation:")
+        ui.textEdit_3.insertPlainText('\n')
+        ui.textEdit_3.insertPlainText("--Firmware Name: %s"%bytes(USB2XXXInfo.FirmwareName).decode('ascii'))
+        ui.textEdit_3.insertPlainText('\n')        
+        ui.textEdit_3.insertPlainText("--Firmware Version: v%d.%d.%d"%((USB2XXXInfo.FirmwareVersion>>24)&0xFF,(USB2XXXInfo.FirmwareVersion>>16)&0xFF,USB2XXXInfo.FirmwareVersion&0xFFFF))
+        ui.textEdit_3.insertPlainText('\n')        
+        ui.textEdit_3.insertPlainText("--Hardware Version: v%d.%d.%d"%((USB2XXXInfo.HardwareVersion>>24)&0xFF,(USB2XXXInfo.HardwareVersion>>16)&0xFF,USB2XXXInfo.HardwareVersion&0xFFFF))
+        ui.textEdit_3.insertPlainText('\n')        
+        ui.textEdit_3.insertPlainText("--Build Date: %s"%bytes(USB2XXXInfo.BuildDate).decode('ascii'))
+        ui.textEdit_3.insertPlainText('\n')        
+
+        serial_number_str = "--serial Number: "
         for i in range(0, len(USB2XXXInfo.SerialNumber)):
-            print("%08X"%USB2XXXInfo.SerialNumber[i],end='')
-        print("")
-        print("--Function String: %s"%bytes(USB2XXXFunctionString.value).decode('ascii'))
+            serial_number_str += "%08X"%USB2XXXInfo.SerialNumber[i]
+        ui.textEdit_3.insertPlainText(serial_number_str)  # 输出完整的序列号字符串
+        ui.textEdit_3.insertPlainText('\n')
+        
+        ui.textEdit_3.insertPlainText("")
+        ui.textEdit_3.insertPlainText("--Function String: %s"%bytes(USB2XXXFunctionString.value).decode('ascii'))  
+        ui.textEdit_3.insertPlainText('\n')    
     else:
-        print("Get device infomation faild!")
-        ui.textEdit_2.setText("Get device infomation faild!")
+        # print("Get device infomation faild!")
+        ui.textEdit_3.insertPlainText ("Get device infomation faild!")
+        ui.textEdit_3.insertPlainText('\n')       
         sys.exit(app.exec_())
 
     # 初始化配置主LIN
@@ -481,9 +508,6 @@ if __name__ == "__main__":
     else:
         print("Send LIN break success!")
     sleep(0.01)
-
-
-
 
     ui.pushButton.clicked.connect(WriteMessage)
     ui.pushButton_3.clicked.connect(ReadMessage)
