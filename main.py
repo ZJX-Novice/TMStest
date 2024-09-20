@@ -1,4 +1,4 @@
-from Ui_TMS import Ui_MainWindow
+from TMS import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication,QMainWindow
 from PyQt5.QtWidgets import QTextEdit
 from PyQt5.QtWidgets import *
@@ -13,7 +13,7 @@ from time import sleep
 from usb_device import *
 from usb2lin import *
 import threading
-
+import re
 
 finish_data = []
 
@@ -27,15 +27,39 @@ def ClearCache():
 def WriteMessage():
     LINMsg = LIN_MSG()
     if ui.lineEdit_2.text()=="":
-        ui.textEdit.setText("请输入请求ID!")
+        #ui.textEdit.setText("请输入请求ID!")
+        QMessageBox.information(MainWindow, "提示", "请输入请求ID")
         return
     ID=ui.lineEdit_2.text()
-    LINMsg.ID = int(ID,16)  #将文本框中获取的内容转换为16进制
+    # 尝试将ID转换为16进制数，如果失败则提醒用户输入错误
+    try:
+        LINMsg.ID = int(ID, 16)     # 将文本框中获取的内容转换为16进制
+    except ValueError:
+        #ui.textEdit.setText("请求ID无效，请输入正确的16进制数！")
+        QMessageBox.warning(MainWindow, "警告", "请求ID无效，请输入正确的16进制数！")
+        return
     LINMsg.DataLen = 8
     message=ui.lineEdit.text() 
-    ui.textEdit.setText(message) #将数据显示在文本框中
+    if ui.lineEdit.text()=="":
+        #ui.textEdit.setText("请输入请求报文!")
+        QMessageBox.information(MainWindow, "提示", "请输入请求报文")
+        return
+        # 检查报文格式是否正确，确保由8组十六进制数组成
     words = message.split()
-    formatted_words = ['0x' + word for word in words]  #对每个切片数据前加入'0x'
+    if len(words) != 8:     # 确保报文由8个帧组成
+        QMessageBox.warning(MainWindow, "警告","报文格式错误！")
+        return
+        
+    # 正则表达式检查每个报文帧是否是有效的十六进制数
+    hex_pattern = re.compile(r'^[0-9A-Fa-f]{2}$')
+    for word in words:
+        if not hex_pattern.match(word):
+            QMessageBox.warning(MainWindow, "警告", f"报文帧 '{word}' 格式不正确，请输入有效的两位十六进制数!")
+            return
+    ui.textEdit.insertPlainText(message)
+    ui.textEdit.insertPlainText('\n')
+    #ui.textEdit.setText(message) #将数据显示在文本框中
+    formatted_words = ['0x' + word for word in words]   #对每个切片数据前加入'0x'
     for i in range(0,LINMsg.DataLen):
         LINMsg.Data[i] = int(formatted_words[i],16)
     ret = LIN_Write(DevHandles[0],LINMasterIndex,byref(LINMsg),1)
@@ -48,18 +72,21 @@ def WriteMessage():
             print("0x%02X "%LINMsg.Data[i],end='')
         print("")
     sleep(0.1)
-    ClearCache()
-
-
+    #ClearCache()
 # 读数据
 def ReadMessage():
-    global first_message  # 全局变量存储首次ASCII码
+    global first_message    # 全局变量存储首次ASCII码
     LINMsg = LIN_MSG()
     if ui.lineEdit_3.text()=="":
-        ui.textEdit_2.setText("请输入响应ID!")
+        #ui.textEdit_2.setText("请输入响应ID!")
+        QMessageBox.information(MainWindow, "提示", "请输入响应ID")
         return
     ID = ui.lineEdit_3.text()
-    LINMsg.ID = int(ID, 16)
+    try:
+        LINMsg.ID = int(ID, 16)     # 将文本框中获取的内容转换为16进制
+    except ValueError:
+        QMessageBox.warning(MainWindow, "警告", "响应ID无效，请输入正确的16进制数！")
+        return
     LINMsg.DataLen = 8
     ret = LIN_Read(DevHandles[0],LINMasterIndex,byref(LINMsg),1)
     if ret != LIN_SUCCESS:
@@ -74,13 +101,10 @@ def ReadMessage():
             message += " "
         print("S2M [0x%02X]"%LINMsg.ID,message)
         display_message = " ".join(["%02X" % byte for byte in LINMsg.Data[:LINMsg.DataLen-1]])
-        #ui.textEdit_2.setText(display_message)
-        if 'first_message' not in globals():
-            first_message = display_message
-        else:
-            first_message += display_message  # 合并ASCII码
-            first_message += " "
-        ui.textEdit_2.setText(first_message)  # 更新UI显示合并后的ASCII码
+            
+        ui.textEdit_2.insertPlainText(display_message)
+        ui.textEdit_2.insertPlainText('\n')
+
         return display_message
 
 # 旧版本读取
@@ -122,7 +146,6 @@ def OpenFileFolder(self):
     ui.lineEdit_9.setText(FileFolder)
     print(FileFolder)
 
-
 # 打开文件
 def OpenFile(self):
     Files, _ = QFileDialog.getOpenFileName(None, '打开列表文件', 'C:\\','LIN List File (*.bin);;MLX LIN List File (*.lin);;Any file (*)')
@@ -147,17 +170,15 @@ def OpenFile(self):
                     processed_data += chr(byte)
                 else:
                     processed_data += '_'  # 非字符数据，转换为下划线
-
             change_hex_data.append(processed_data)  # 将处理后的结果存储在列表中
-
         print(f"Total lines processed: {len(all_hex_data)}")  # 打印处理的行数
-
         file.close()
-
         convert_and_send_init_data(Files)
     else:
         print("未选择文件")
-
+        QMessageBox.information(MainWindow,"提示","未选择文件，请重新选择！")
+        
+        
 
 def convert_and_send_init_data(file_name):   # 处理数据
     NAD = "01"
@@ -429,7 +450,7 @@ if __name__ == "__main__":
     ret = USB_ScanDevice(byref(DevHandles))
     if(ret == 0):
         # print("No device connected!")
-        QMessageBox.critical(MainWindow,"提示","没有设备连接，请重启！")
+        QMessageBox.critical(MainWindow,"提示","没有设备连接，请连接后重启！")
         # ui.textEdit_3.insertPlainText("No device connected!")
         # ui.textEdit_3.insertPlainText('\n')
         sys.exit(app.exec_())
