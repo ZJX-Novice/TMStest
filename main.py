@@ -115,35 +115,118 @@ def ReadMessage():
 
 # 旧版本读取
 def Old_Version():
-    ASCllLen=len(first_message)
-    if ASCllLen == 48:
-        message_str1=first_message[18:24]
-        message_str2=first_message[30:38]
-        message_str=message_str1+message_str2
-        ascll_message = ''.join([chr(int(byte, 16)) for byte in message_str.split()[:ASCllLen]])
-        ui.lineEdit_5.setText(ascll_message)
-        print("SW:",ascll_message)
-    elif ASCllLen == 24:
-        message_str=first_message[15:23]
-        ascll_message = ''.join([chr(int(byte, 16)) for byte in message_str.split()[:ASCllLen]])
-        ui.lineEdit_6.setText(ascll_message)
-        print("HW:",ascll_message)
+    Old_Sw_LINMsg = LIN_MSG()
+    Old_Sw_LINMsg.ID = 0x3C
+    Old_Sw_LINMsg.DataLen = 8
+    # 发送并读取软件版本号
+    Sw_message = "7F 03 22 A6 34 FF FF FF"
+    wd = Sw_message.split(' ')
+    formatted_words = ['0x' + w for w in wd]
+    for i in range(Old_Sw_LINMsg.DataLen):
+        Old_Sw_LINMsg.Data[i] = int(formatted_words[i], 16)
+    ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(Old_Sw_LINMsg), 1)
+    if ret != LIN_SUCCESS:
+        print("LIN write data failed!")
+        return
+    else:
+        print("M2S", "[0x%02X] " % Old_Sw_LINMsg.ID, end='')
+        for i in range(Old_Sw_LINMsg.DataLen):
+            print("0x%02X " % Old_Sw_LINMsg.Data[i], end='')
+        print("")
+    sleep(0.01)  # 等待设备响应
 
+    # 两次读取软件版本号
+    Swdata_byte1 = ReadMessage().strip()
+    Swdata_byte2 = ReadMessage().strip()
+    Swdata_byte = f'{Swdata_byte1} {Swdata_byte2}'
+    Sw_data=Swdata_byte[18:24]+Swdata_byte[30:38]
+    Sw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Sw_data.split()])
+    ui.lineEdit_5.setText(Sw_ascll_message)
+    print("SW:",Sw_ascll_message)
+
+    #读取硬件版本号
+    data_buffer = (c_byte*8)(0x7F,0x03,0x22,0xA6,0x35,0xFF,0xFF,0xFF)
+    Old_Hw_LINMsg = LIN_MSG()
+    Old_Hw_LINMsg.ID = 0x3C
+    Old_Hw_LINMsg.DataLen = 8
+    # 发送并读取硬件版本号
+    for i in range(0,Old_Hw_LINMsg.DataLen):
+        Old_Hw_LINMsg.Data[i] = data_buffer[i]
+    ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(Old_Hw_LINMsg), 1)
+    if ret != LIN_SUCCESS:
+        print("LIN write data failed!")
+        return
+    else:
+        print("M2S", "[0x%02X] " % Old_Hw_LINMsg.ID, end='')
+        for i in range(Old_Hw_LINMsg.DataLen):
+            print("0x%02X " % Old_Hw_LINMsg.Data[i], end='')
+        print("")
+    sleep(0.01)  # 等待设备响应
+    #读硬件数据
+    Hwdata_byte = ReadMessage().strip()
+    Hw_data = Hwdata_byte[15:23]
+    Hw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Hw_data.split()])
+    ui.lineEdit_6.setText(Hw_ascll_message)
+    print("HW:",Hw_ascll_message)
+    
 # 新版本读取
 def New_Version():
-    ASCllLen=len(first_message)
-    if ASCllLen == 48:
-        message_str1=first_message[18:24]
-        message_str2=first_message[30:38]
-        message_str=message_str1+message_str2
-        ascll_message = ''.join([chr(int(byte, 16)) for byte in message_str.split()[:ASCllLen]])
-        ui.lineEdit_7.setText(ascll_message)
-        print("SW:",ascll_message)
-    elif ASCllLen == 24:
-        message_str=first_message[15:23]
-        ascll_message = ''.join([chr(int(byte, 16)) for byte in message_str.split()[:ASCllLen]])
-        ui.lineEdit_8.setText(ascll_message)
-        print("HW:",ascll_message)
+    New_Sw_LINMsg = LIN_MSG()
+    New_Sw_LINMsg.ID = 0x3C
+    New_Sw_LINMsg.DataLen = 8
+    # 发送并读取软件版本号
+    Sw_message = "7F 03 22 A6 34 FF FF FF"
+    wd = Sw_message.split(' ')
+    formatted_words = ['0x' + w for w in wd]
+    for i in range(New_Sw_LINMsg.DataLen):
+        New_Sw_LINMsg.Data[i] = int(formatted_words[i], 16)
+    ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(New_Sw_LINMsg), 1)
+    if ret != LIN_SUCCESS:
+        print("LIN write data failed!")
+        return
+    else:
+        print("M2S", "[0x%02X] " % New_Sw_LINMsg.ID, end='')
+        for i in range(New_Sw_LINMsg.DataLen):
+            print("0x%02X " % New_Sw_LINMsg.Data[i], end='')
+        print("")
+    sleep(0.01)  # 等待设备响应
+
+    # 两次读取软件版本号
+    Swdata_byte1 = ReadMessage().strip()
+    print(Swdata_byte1)
+    Swdata_byte2 = ReadMessage().strip()
+    print(Swdata_byte2)
+    Swdata_byte = f'{Swdata_byte1} {Swdata_byte2}'
+    Sw_data=Swdata_byte[18:24]+Swdata_byte[30:38]
+    Sw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Sw_data.split()])
+    ui.lineEdit_7.setText(Sw_ascll_message)
+    print("SW:",Sw_ascll_message)
+
+    #读取硬件版本号
+    data_buffer = (c_byte*8)(0x7F,0x03,0x22,0xA6,0x35,0xFF,0xFF,0xFF)
+    New_Hw_LINMsg = LIN_MSG()
+    New_Hw_LINMsg.ID = 0x3C
+    New_Hw_LINMsg.DataLen = 8
+    # 发送并读取硬件版本号
+    for i in range(0,New_Hw_LINMsg.DataLen):
+        New_Hw_LINMsg.Data[i] = data_buffer[i]
+    ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(New_Hw_LINMsg), 1)
+    if ret != LIN_SUCCESS:
+        print("LIN write data failed!")
+        return
+    else:
+        print("M2S", "[0x%02X] " % New_Hw_LINMsg.ID, end='')
+        for i in range(New_Hw_LINMsg.DataLen):
+            print("0x%02X " % New_Hw_LINMsg.Data[i], end='')
+        print("")
+    sleep(0.01)  # 等待设备响应
+    #读硬件数据
+    Hwdata_byte = ReadMessage().strip()
+    print(Hwdata_byte)
+    Hw_data = Hwdata_byte[15:23]
+    Hw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Hw_data.split()])
+    ui.lineEdit_8.setText(Hw_ascll_message)
+    print("HW:",Hw_ascll_message)
 
 
 # 打开文件夹
@@ -268,10 +351,10 @@ def send_frame():
         "01 04 27 02 F9 AD FF FF",
         "01 10 0E 31 01 DF FF 44",  
         "01 21 00 01 58 00 00 01",
-        "01 22 C9 6C 00 FF FF FF",
+        "01 22 C9 6B 00 FF FF FF",
         "01 04 31 03 DF FF FF FF", 
         "01 10 0B 34 00 44 00 01",
-        "01 21 58 00 00 01 C9 6C"
+        "01 21 58 00 00 01 C9 6B"
     ]
     resp_words = [
         "01 02 50 03 FF FF FF FF",
@@ -398,7 +481,7 @@ def flash_message():
                 for i in range(LINMsg.DataLen):
                     print("0x%02X " % LINMsg.Data[i], end='')
                 print("")
-                
+
                 # 检查是否发送了22条报文
                 if (index+1) % 22 == 0:
                     while True:
@@ -412,7 +495,7 @@ def flash_message():
                             print("收到响应，继续发送")
                             break
             index += 1  # 手动增加 index
-            sleep(0.01)
+            sleep(0.05)
 # 获取指定位置的帧
 def get_frame(words, index):
     words_split = words.split(' ')
