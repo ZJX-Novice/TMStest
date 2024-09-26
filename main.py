@@ -36,7 +36,10 @@ def WriteMessage():
         LINMsg.ID = int(ID, 16)     # 将文本框中获取的内容转换为16进制
     except ValueError:
         #ui.textEdit.setText("请求ID无效，请输入正确的16进制数！")
-        QMessageBox.warning(MainWindow, "警告", "请求ID无效，请输入正确的16进制数！")
+        QMessageBox.warning(MainWindow, "警告", "请求ID无效,请输入正确的16进制数!")
+        return
+    if not (0x00 <= LINMsg.ID <= 0xFF):
+        QMessageBox.warning(MainWindow, "警告", "请求ID无效,ID必须是两位十六进制数!(范围:00-FF)")
         return
     LINMsg.DataLen = 8
     message=ui.lineEdit.text() 
@@ -49,7 +52,7 @@ def WriteMessage():
     if len(words) != 8:     # 确保报文由8个帧组成
         QMessageBox.warning(MainWindow, "警告","报文格式错误！")
         return
-        
+
     # 正则表达式检查每个报文帧是否是有效的十六进制数
     hex_pattern = re.compile(r'^[0-9A-Fa-f]{2}$')
     for word in words:
@@ -73,35 +76,38 @@ def WriteMessage():
         print("")
     sleep(0.1)
     #ClearCache()
+    
 # 读数据
 def ReadMessage():
     global first_message    # 全局变量存储首次ASCII码
-    LINMsg = LIN_MSG()
+    LINMsgRead = LIN_MSG()
     if ui.lineEdit_3.text()=="":
-        #ui.textEdit_2.setText("请输入响应ID!")
         QMessageBox.information(MainWindow, "提示", "请输入响应ID")
         return
     ID = ui.lineEdit_3.text()
     try:
-        LINMsg.ID = int(ID, 16)     # 将文本框中获取的内容转换为16进制
+        LINMsgRead.ID = int(ID, 16)     # 将文本框中获取的内容转换为16进制
     except ValueError:
         QMessageBox.warning(MainWindow, "警告", "响应ID无效，请输入正确的16进制数！")
         return
-    LINMsg.DataLen = 8
-    ret = LIN_Read(DevHandles[0],LINMasterIndex,byref(LINMsg),1)
+    if not (0x00 <= LINMsgRead.ID <= 0xFF):
+        QMessageBox.warning(MainWindow, "警告", "请求ID无效,ID必须是两位十六进制数!(范围:00-FF)")
+        return
+    LINMsgRead.DataLen = 8
+    ret = LIN_Read(DevHandles[0],LINMasterIndex,byref(LINMsgRead),1)
     if ret != LIN_SUCCESS:
-        print("LIN ID[0x%02X] read data failed!"%LINMsg.ID)
+        print("LIN ID[0x%02X] read data failed!"%LINMsgRead.ID)
         # 显示错误信息给用户，‌而不是退出程序
-        ui.textEdit_2.setText("LIN ID[0x%02X] read data failed!"%LINMsg.ID)
+        ui.textEdit_2.setText("LIN ID[0x%02X] read data failed!"%LINMsgRead.ID)
         return None
     else:
         message= ""
-        for i in range(LINMsg.DataLen-1):
-            message += "0x%02X"%LINMsg.Data[i]
+        for i in range(LINMsgRead.DataLen-1):
+            message += "0x%02X"%LINMsgRead.Data[i]
             message += " "
-        print("S2M [0x%02X]"%LINMsg.ID,message)
-        display_message = " ".join(["%02X" % byte for byte in LINMsg.Data[:LINMsg.DataLen-1]])
-            
+        print("S2M [0x%02X]"%LINMsgRead.ID,message)
+        display_message = " ".join(["%02X" % byte for byte in LINMsgRead.Data[:LINMsgRead.DataLen-1]])
+
         ui.textEdit_2.insertPlainText(display_message)
         ui.textEdit_2.insertPlainText('\n')
 
@@ -345,11 +351,7 @@ def send_frame():
                 # 第 2 5 条发送报文无需验证
                 print("解密成功！")
                 flag = False
-            else:
-                # 如果报文匹配，停止循环
-                if res == formatted_resp:
-                    print("解密成功！")
-                    flag = False
+
             if index == 4 :
                 if res.strip() == '':
                     continue
@@ -369,56 +371,48 @@ def send_frame():
                 # 第 5 条发送报文无需验证
                 print("解密成功！")
                 flag = False
+    return True
+def flash_message():
+    ret = send_frame()
+    if ret == True:
+        print("安全校验成功，开始烧录！")
+        index = 0  # 初始化 index
+        while index < len(finish_data):
+            frame = finish_data[index]
+            ui.textEdit.setText(frame)  # 将数据显示在文本框中
+            LINMsg = LIN_MSG()
+            ID_Write = "3C"
+            LINMsg.ID = int(ID_Write, 16)
+            LINMsg.DataLen = 8
+            words = frame.split(' ')
+            formatted_words = ['0x' + word for word in words]
+            for i in range(0, LINMsg.DataLen):
+                LINMsg.Data[i] = int(formatted_words[i], 16)
+            ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
+            if ret != LIN_SUCCESS:
+                print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
+                ui.textEdit.setText("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
+                return
             else:
-                # 如果报文匹配，停止循环
-                if res == formatted_resp:
-                    print("解密成功2！")
-                    flag = False
-    # 发送数据
-    # 最后的输出帧
-    print("安全校验成功，开始烧录")
-    for frame in finish_data:
-        ui.textEdit.setText(frame)  # 将数据显示在文本框中
-        LINMsg = LIN_MSG()
-        ID_Write = "3C"
-        LINMsg.ID = int(ID_Write, 16)  # 将文本框中获取的内容转换为16进制
-        LINMsg.DataLen = 8
-        words = frame.split(' ')
-        formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
-        for i in range(0, LINMsg.DataLen):
-            LINMsg.Data[i] = int(formatted_words[i], 16)
-        ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
-        if ret != LIN_SUCCESS:
-            print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
-            ui.textEdit.setText("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
-            return
-        else:
-            print("M2S", "[0x%02X] " % LINMsg.ID, end='')
-            for i in range(LINMsg.DataLen):
-                print("0x%02X "%LINMsg.Data[i],end='')
-            print("")
-        sleep(0.1)
-        #读数据
-        LINMsgRead = LIN_MSG()
-        ID_Read = "3D"
-        LINMsgRead.ID = int(ID_Read, 16)  # 将文本框中获取的内容转换为16进制
-        LINMsgRead.DataLen = 8
-        ui.textEdit_2.setText(frame)  # 将数据显示在文本框中
-        words = frame.split()
-        formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
-        ret = LIN_Read(DevHandles[0],LINMasterIndex,byref(LINMsgRead),1)
-        if ret != LIN_SUCCESS:
-            print("LIN ID[0x%02X] Read data failed!" % LINMsgRead.ID)
-            ui.textEdit_2.setText("LIN ID[0x%02X] Read data failed!" % LINMsgRead.ID)
-            return
-        # exit()
-        else:
-            print("S2M","[0x%02X] "%LINMsgRead.ID,end='')
-            for i in range(LINMsgRead.DataLen-1):
-                print("0x%02X "%LINMsgRead.Data[i],end='')
-            print("")
-        #sleep(0.1)
-
+                print(index, "----M2S", "[0x%02X] " % LINMsg.ID, end='')
+                for i in range(LINMsg.DataLen):
+                    print("0x%02X " % LINMsg.Data[i], end='')
+                print("")
+                
+                # 检查是否发送了22条报文
+                if (index+1) % 22 == 0:
+                    while True:
+                        resread = ReadMessage().strip()
+                        #print("~~~~~~~~~~~~~~~~", resread, "~~~~~~~~~~~~~~", frame.strip())
+                        if resread == frame.strip():
+                            print("=======================================================未收到响应，重新发送=======================================================")
+                            index -= 22  # 将index减少22，重新发送
+                            break
+                        else:
+                            print("收到响应，继续发送")
+                            break
+            index += 1  # 手动增加 index
+            sleep(0.01)
 # 获取指定位置的帧
 def get_frame(words, index):
     words_split = words.split(' ')
@@ -449,17 +443,13 @@ if __name__ == "__main__":
     #Scan device
     ret = USB_ScanDevice(byref(DevHandles))
     if(ret == 0):
-        # print("No device connected!")
-        QMessageBox.critical(MainWindow,"提示","没有设备连接，请连接后重启！")
-        # ui.textEdit_3.insertPlainText("No device connected!")
-        # ui.textEdit_3.insertPlainText('\n')
+        QMessageBox.critical(MainWindow,"提示","没有设备连接，请连接后重试！")
         sys.exit(app.exec_())
     else:
-        # print("Have %d device connected!"%ret)
         ui.textEdit_3.insertPlainText("Have %d device connected!"%ret)
         ui.textEdit_3.insertPlainText('\n')
-    # Open device
 
+    # Open device
     ret = USB_OpenDevice(DevHandles[0])
     if(bool(ret)):
         # print("Open device success!")
@@ -536,6 +526,6 @@ if __name__ == "__main__":
     ui.pushButton_4.clicked.connect(Old_Version)
     ui.pushButton_5.clicked.connect(New_Version)
     ui.pushButton_6.clicked.connect(OpenFile)
-    ui.pushButton_7.clicked.connect(send_frame)
+    ui.pushButton_7.clicked.connect(flash_message)
 
     sys.exit(app.exec_())
