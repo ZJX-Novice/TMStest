@@ -14,8 +14,11 @@ from usb_device import *
 from usb2lin import *
 import threading
 import re
+import binascii
 
 finish_data = []
+FileData = []
+num_check = 0
 
 #清除缓存
 def ClearCache():
@@ -228,6 +231,17 @@ def New_Version():
     ui.lineEdit_8.setText(Hw_ascll_message)
     print("HW:",Hw_ascll_message)
 
+# 字符转换16进制
+def StrToHex(data):
+    # 0~9
+    if data <= 0x39 and data >= 0x30:
+        data = data - 48
+    elif data >= 0x41 and data <= 0x5A:
+        data = data - 55
+    elif data >= 0x61 and data <= 0x7A:
+        data = data - 87
+    return data
+
 
 # 打开文件夹
 def OpenFileFolder(self):
@@ -246,6 +260,14 @@ def OpenFile(self):
     if file.open(QIODevice.ReadOnly):
         all_hex_data = []  # 用于存储所有行的原始十六进制数据
         change_hex_data = []     # 用于存储转换过后的数据
+        # 读取文件所有数据，进行校验
+        array_check = file.readAll()
+        HexData = binascii.hexlify(array_check)
+        for n in range(1, len(HexData), 2):
+            FileData.append(StrToHex(HexData[n - 1]) * 16 + StrToHex(HexData[n]))
+        print(FileData)
+        FileLen = len(HexData)
+        print(f".bin文件的数据长度Hex：{FileLen}")
         while not file.atEnd():
             array = file.readLine()  # 逐行读取
             data = array.data()
@@ -292,6 +314,8 @@ def convert_and_send_init_data(file_name):   # 处理数据
         # 确保一行128字节数据，不够补0
 
         if len(line) < 256:
+            global num_check
+            num_check = 256 - len(line)
             line = line.ljust(256, '0')
         # 将每 2 个十六进制字符转换回字节
         line_bytes = bytes.fromhex(line)
@@ -335,6 +359,7 @@ def DiagSvcSecAccess_SaccKey(seed):
     return SaccKey
 
 def send_frame():
+    global num_check
     #print(f"3C: {frame}")
     LINMsg = LIN_MSG()
     ID = "3C"
@@ -457,6 +482,8 @@ def send_frame():
     return True
 def flash_message():
     ret = send_frame()
+    global num_check
+    send_check = 0
     if ret == True:
         print("安全校验成功，开始烧录！")
         index = 0  # 初始化 index
@@ -493,9 +520,11 @@ def flash_message():
                             break
                         else:
                             print("收到响应，继续发送")
+                            send_check += 1
                             break
             index += 1  # 手动增加 index
             sleep(0.05)
+    print(send_check * 256 - num_check)
 # 获取指定位置的帧
 def get_frame(words, index):
     words_split = words.split(' ')
