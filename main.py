@@ -264,10 +264,7 @@ def OpenFile(self):
         file.close()
         convert_and_send_init_data(Files)
     else:
-        print("未选择文件")
         QMessageBox.information(MainWindow,"提示","未选择文件，请重新选择！")
-        
-        
 
 def convert_and_send_init_data(file_name):   # 处理数据
     NAD = "01"
@@ -334,14 +331,12 @@ def DiagSvcSecAccess_SaccKey(seed):
     SaccKey = (key_result ^ 0xFFFF)&0xFFFF
     return SaccKey
 
+#扩展会话+安全校验
 def send_frame():
-    #print(f"3C: {frame}")
     LINMsg = LIN_MSG()
     ID = "3C"
     LINMsg.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
     LINMsg.DataLen = 8
-    #message = frame
-        # 扩展+安全校验
     check_words = [
         "01 02 10 03 FF FF FF FF",
         "01 02 27 01 FF FF FF FF",
@@ -365,14 +360,16 @@ def send_frame():
         "01 02 67 02 FF FF FF FF",
 #如果第二位pci为10，就继续执行发送报文，直到第二位不在范围0x20~0x2F（包含20和2F）里,进行接收响应
         "",
-        "",
+        "01 21 00 01 58 00 00 01",
         "01 06 71 01 DF FF 01 F4",
         "01 04 71 03 DF FF FF FF",
         "",
         "01 04 74 20 00 82 FF FF"
     ]
-        # 遍历 check_words
+    # 遍历 check_words
     for index, word in enumerate(check_words):
+        max_retries = 3  # 设置最大重发次数
+        retry_count = 0   # 初始化重发计数器
         # 发送报文
         wd = word.split(' ')
         formatted_words = ['0x' + w for w in wd]  # 对每个切片数据前加入'0x'
@@ -380,17 +377,17 @@ def send_frame():
             LINMsg.Data[i] = int(formatted_words[i], 16)
 
         res = resp_words[index].split(' ')
-        formatted_resp = " ".join([ r for r in res]).strip()#.encode('utf-8')  # 对每个切片数据前加入'0x'
+        formatted_resp = " ".join([ r for r in res]).strip()
 
         flag = True
         while flag:
             send_1=hex(int(get_frame(word, 1),16))
             if(send_1=='0x10'):
-                print("发送首帧")
+                print("--------",index,"发送首帧")
                 flag = False
             if '0x20'<=send_1<='0x2F':
-                print("发送续帧")
-                flag = False
+                print("--------",index,"发送续帧")
+                #flag = False
 
             ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
             if ret != LIN_SUCCESS:
@@ -407,20 +404,35 @@ def send_frame():
             if ui.lineEdit_3.text()=="":
                 ui.textEdit_2.setText("请输入响应ID!")
                 return
-            res = ReadMessage().strip()
-            
-            if res == formatted_resp:
-                print("匹配成功！")
+            send_res = ReadMessage().strip()
+
+            print("============================================================")
+            print(index,"-------------------------",send_res)
+            print(index,"-------------------------",formatted_resp)
+            print("============================================================")
+
+            if send_res == formatted_resp:
+                print("-------",index,"匹配成功！")
                 flag = False
                 break
+            else:
+                print("-------",index,"匹配失败，正在重发...")
+                if retry_count >= max_retries:
+                    print("重发次数已超过最大限制，无法匹配！")
+                    QMessageBox.warning(MainWindow, "警告", "重发次数已超过最大限制，无法匹配！")
+                    return
+                retry_count+=1
+                    
+            # else:
+            #     if index ==0:
 
             # 处理数组的第二个和第五个报文 (index == 1 or index == 4)
             if index == 1 :
-                if res.strip() == '':
+                if send_res.strip() == '':
                     continue
                 # 获取第 5 6 位 帧，去掉 0x
-                seed_part2_5 = get_frame(res, 4)
-                seed_part2_6 = get_frame(res, 5)
+                seed_part2_5 = get_frame(send_res, 4)
+                seed_part2_6 = get_frame(send_res, 5)
                 seed = int(seed_part2_5 + seed_part2_6, 16)
                 decrypted_key2 = DiagSvcSecAccess_SaccKey(seed)  # 调用解密函数
                 print(f"Decrypted key: 0x{decrypted_key2:04X}")  # 输出解密后的密钥
@@ -436,11 +448,11 @@ def send_frame():
                 flag = False
 
             if index == 4 :
-                if res.strip() == '':
+                if send_res.strip() == '':
                     continue
                 # 获取第 5 6 位 帧，去掉 0x
-                seed_part5_5 = get_frame(res, 4)
-                seed_part5_6 = get_frame(res, 5)
+                seed_part5_5 = get_frame(send_res, 4)
+                seed_part5_6 = get_frame(send_res, 5)
                 seed = int(seed_part5_5 + seed_part5_6, 16)
                 decrypted_key5 = DiagSvcSecAccess_SaccKey(seed)  # 调用解密函数
                 print(f"Decrypted key: 0x{decrypted_key5:04X}")  # 输出解密后的密钥
@@ -455,11 +467,26 @@ def send_frame():
                 print("解密成功！")
                 flag = False
     return True
+
 def flash_message():
+    # 校验连接状态
+    if(not DeviceOperate().checkConnected()):
+        QMessageBox.warning(MainWindow, "警告", "请检查连接状态")
+        return
+
+    # # 校验是否选择文件
+    # Files = ui.lineEdit_9.text()
+    # if not Files:
+    #     QMessageBox.warning(MainWindow, "警告", "未选择文件，请选择文件！")
+    #     return
+
     ret = send_frame()
     if ret == True:
         print("安全校验成功，开始烧录！")
-        index = 0  # 初始化 index
+        index = 0
+        max_retries = 3  # 设置最大重发次数
+        retry_count = 0   # 初始化重发计数器
+
         while index < len(finish_data):
             frame = finish_data[index]
             ui.textEdit.setText(frame)  # 将数据显示在文本框中
@@ -471,6 +498,7 @@ def flash_message():
             formatted_words = ['0x' + word for word in words]
             for i in range(0, LINMsg.DataLen):
                 LINMsg.Data[i] = int(formatted_words[i], 16)
+
             ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
             if ret != LIN_SUCCESS:
                 print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
@@ -486,16 +514,24 @@ def flash_message():
                 if (index+1) % 22 == 0:
                     while True:
                         resread = ReadMessage().strip()
-                        #print("~~~~~~~~~~~~~~~~", resread, "~~~~~~~~~~~~~~", frame.strip())
                         if resread == frame.strip():
                             print("=======================================================未收到响应，重新发送=======================================================")
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                print(f"重发已达{max_retries}次，退出程序")
+                                QMessageBox.warning(MainWindow, "警告", f"已重发{max_retries}次，未收到响应。请检查设备状态。")
+                                return
                             index -= 22  # 将index减少22，重新发送
                             break
                         else:
                             print("收到响应，继续发送")
-                            break
+                            retry_count = 0  # 重置重发计数器
+                            break  # 收到响应，跳出循环继续发送下一条
             index += 1  # 手动增加 index
             sleep(0.05)
+    else:
+        QMessageBox.warning(MainWindow, "警告", "安全校验失败，请检查设备状态!")
+
 # 获取指定位置的帧
 def get_frame(words, index):
     words_split = words.split(' ')
@@ -505,14 +541,98 @@ def set_frame(frame,index,value):
     for i in range(len(frame)):
         if i == index:
             frame[i] = value
-# 关闭设备
-def Close():
-    ret = USB_CloseDevice(DevHandles[0])
-    if(bool(ret)):
-        print("Close device success!")
-    else:
-        print("Close device faild!")
-    sys.exit(app.exec_())
+
+# Device Operate finish               
+class DeviceOperate():
+    # 连接是否成功
+    isConnected = False
+    def checkConnected() -> bool:
+        return bool(DeviceOperate.isConnected)
+
+    def __init__(self) -> None:
+        pass
+
+    def checkConnected(self) -> bool:
+        return bool(self.isConnected)
+
+    def ScanDevice(self):
+        ret = USB_ScanDevice(byref(DevHandles))
+        if(ret == 0):
+            QMessageBox.critical(MainWindow,"提示","没有设备连接，请连接后重试！")
+            sys.exit(app.exec_())
+        else:
+            print("Have %d device connected!"%ret)   
+        return ret
+
+    def OpenDevice(self):
+        self.ScanDevice()
+        ret = USB_OpenDevice(DevHandles[0])
+        if(bool(ret)):
+            ui.textEdit_3.insertPlainText("Open device success!")    
+            ui.textEdit_3.insertPlainText('\n')
+        else:
+            ui.textEdit_3.insertPlainText("Open device faild!")       
+            ui.textEdit_3.insertPlainText('\n') 
+            sys.exit(app.exec_())
+        USB2XXXInfo = DEVICE_INFO()
+        USB2XXXFunctionString = (c_char * 256)()
+        ret = DEV_GetDeviceInfo(DevHandles[0],byref(USB2XXXInfo),byref(USB2XXXFunctionString))
+        if(bool(ret)):
+            ui.textEdit_3.insertPlainText("USB2XXX device infomation:")
+            ui.textEdit_3.insertPlainText('\n')
+            ui.textEdit_3.insertPlainText("--Firmware Name: %s"%bytes(USB2XXXInfo.FirmwareName).decode('ascii'))
+            ui.textEdit_3.insertPlainText('\n')        
+            ui.textEdit_3.insertPlainText("--Firmware Version: v%d.%d.%d"%((USB2XXXInfo.FirmwareVersion>>24)&0xFF,(USB2XXXInfo.FirmwareVersion>>16)&0xFF,USB2XXXInfo.FirmwareVersion&0xFFFF))
+            ui.textEdit_3.insertPlainText('\n')        
+            ui.textEdit_3.insertPlainText("--Hardware Version: v%d.%d.%d"%((USB2XXXInfo.HardwareVersion>>24)&0xFF,(USB2XXXInfo.HardwareVersion>>16)&0xFF,USB2XXXInfo.HardwareVersion&0xFFFF))
+            ui.textEdit_3.insertPlainText('\n')        
+            ui.textEdit_3.insertPlainText("--Build Date: %s"%bytes(USB2XXXInfo.BuildDate).decode('ascii'))
+            ui.textEdit_3.insertPlainText('\n')
+            
+            serial_number_str = "--serial Number: "
+            for i in range(0, len(USB2XXXInfo.SerialNumber)):
+                serial_number_str += "%08X"%USB2XXXInfo.SerialNumber[i]
+            ui.textEdit_3.insertPlainText(serial_number_str)  # 输出完整的序列号字符串
+            ui.textEdit_3.insertPlainText('\n')
+            
+            ui.textEdit_3.insertPlainText("")
+            ui.textEdit_3.insertPlainText("--Function String: %s"%bytes(USB2XXXFunctionString.value).decode('ascii'))  
+            ui.textEdit_3.insertPlainText('\n')
+        else:
+            ui.textEdit_3.insertPlainText("Get device infomation faild!")
+            ui.textEdit_3.insertPlainText('\n')       
+            sys.exit(app.exec_()) 
+            
+        # 初始化配置主LIN
+        LINConfig = LIN_CONFIG()
+        LINConfig.BaudRate = 19200
+        LINConfig.BreakBits = LIN_BREAK_BITS_11
+        LINConfig.CheckMode = LIN_CHECK_MODE_EXT
+        LINConfig.MasterMode = LIN_MASTER
+        ret = LIN_Init(DevHandles[0],LINMasterIndex,byref(LINConfig))
+        if ret != LIN_SUCCESS:
+            ui.textEdit_3.insertPlainText("Config Master LIN failed!")
+            ui.textEdit_3.insertPlainText('\n')
+            sys.exit(app.exec_())
+        else:
+            DeviceOperate.isConnected = True
+            ui.textEdit_3.insertPlainText("Config Master LIN Success!")
+            ui.textEdit_3.insertPlainText('\n')
+        sleep(0.01)
+
+    def CloseDevice(self):
+        self.ScanDevice()
+        ret = USB_CloseDevice(DevHandles[0])
+        if(bool(ret)):
+            ui.textEdit_3.insertPlainText("close device success!")
+            ui.textEdit_3.insertPlainText('\n')
+        else:
+            ui.textEdit_3.insertPlainText("close device faild!")
+            sys.exit(app.exec_())
+
+    def ClosePanel(self):
+        print("close panel success!")
+        sys.exit(app.exec_())
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -520,92 +640,16 @@ if __name__ == "__main__":
     ui = Ui_MainWindow()
     ui.setupUi(MainWindow)
     MainWindow.show()
-
+    
     LINMasterIndex = 0
     DevHandles = (c_uint * 20)()
-    #Scan device
-    ret = USB_ScanDevice(byref(DevHandles))
-    if(ret == 0):
-        QMessageBox.critical(MainWindow,"提示","没有设备连接，请连接后重试！")
-        sys.exit(app.exec_())
-    else:
-        ui.textEdit_3.insertPlainText("Have %d device connected!"%ret)
-        ui.textEdit_3.insertPlainText('\n')
-
-    # Open device
-    ret = USB_OpenDevice(DevHandles[0])
-    if(bool(ret)):
-        # print("Open device success!")
-        ui.textEdit_3.insertPlainText("Open device success!")    
-        ui.textEdit_3.insertPlainText('\n')    
-    else:
-        # print("Open device faild!")
-        ui.textEdit_3.insertPlainText("Open device faild!")       
-        ui.textEdit_3.insertPlainText('\n') 
-        sys.exit(app.exec_())
-    # Get device infomation
-    USB2XXXInfo = DEVICE_INFO()
-    USB2XXXFunctionString = (c_char * 256)()
-    ret = DEV_GetDeviceInfo(DevHandles[0],byref(USB2XXXInfo),byref(USB2XXXFunctionString))
-    if(bool(ret)):
-        # print("USB2XXX device infomation:")
-        # print("--Firmware Name: %s"%bytes(USB2XXXInfo.FirmwareName).decode('ascii'))
-        # print("--Firmware Version: v%d.%d.%d"%((USB2XXXInfo.FirmwareVersion>>24)&0xFF,(USB2XXXInfo.FirmwareVersion>>16)&0xFF,USB2XXXInfo.FirmwareVersion&0xFFFF))
-        # print("--Hardware Version: v%d.%d.%d"%((USB2XXXInfo.HardwareVersion>>24)&0xFF,(USB2XXXInfo.HardwareVersion>>16)&0xFF,USB2XXXInfo.HardwareVersion&0xFFFF))
-        # print("--Build Date: %s"%bytes(USB2XXXInfo.BuildDate).decode('ascii'))
-        # print("--Serial Number: ",end='')
-        # print("")
-        # print("--Function String: %s"%bytes(USB2XXXFunctionString.value).decode('ascii'))
-        ui.textEdit_3.insertPlainText("USB2XXX device infomation:")
-        ui.textEdit_3.insertPlainText('\n')
-        ui.textEdit_3.insertPlainText("--Firmware Name: %s"%bytes(USB2XXXInfo.FirmwareName).decode('ascii'))
-        ui.textEdit_3.insertPlainText('\n')        
-        ui.textEdit_3.insertPlainText("--Firmware Version: v%d.%d.%d"%((USB2XXXInfo.FirmwareVersion>>24)&0xFF,(USB2XXXInfo.FirmwareVersion>>16)&0xFF,USB2XXXInfo.FirmwareVersion&0xFFFF))
-        ui.textEdit_3.insertPlainText('\n')        
-        ui.textEdit_3.insertPlainText("--Hardware Version: v%d.%d.%d"%((USB2XXXInfo.HardwareVersion>>24)&0xFF,(USB2XXXInfo.HardwareVersion>>16)&0xFF,USB2XXXInfo.HardwareVersion&0xFFFF))
-        ui.textEdit_3.insertPlainText('\n')        
-        ui.textEdit_3.insertPlainText("--Build Date: %s"%bytes(USB2XXXInfo.BuildDate).decode('ascii'))
-        ui.textEdit_3.insertPlainText('\n')        
-
-        serial_number_str = "--serial Number: "
-        for i in range(0, len(USB2XXXInfo.SerialNumber)):
-            serial_number_str += "%08X"%USB2XXXInfo.SerialNumber[i]
-        ui.textEdit_3.insertPlainText(serial_number_str)  # 输出完整的序列号字符串
-        ui.textEdit_3.insertPlainText('\n')
-        
-        ui.textEdit_3.insertPlainText("")
-        ui.textEdit_3.insertPlainText("--Function String: %s"%bytes(USB2XXXFunctionString.value).decode('ascii'))  
-        ui.textEdit_3.insertPlainText('\n')    
-    else:
-        # print("Get device infomation faild!")
-        ui.textEdit_3.insertPlainText ("Get device infomation faild!")
-        ui.textEdit_3.insertPlainText('\n')       
-        sys.exit(app.exec_())
-
-    # 初始化配置主LIN
-    LINConfig = LIN_CONFIG()
-    LINConfig.BaudRate = 19200
-    LINConfig.BreakBits = LIN_BREAK_BITS_11
-    LINConfig.CheckMode = LIN_CHECK_MODE_EXT
-    LINConfig.MasterMode = LIN_MASTER
-    ret = LIN_Init(DevHandles[0],LINMasterIndex,byref(LINConfig))
-    if ret != LIN_SUCCESS:
-        print("Config Master LIN failed!")
-        sys.exit(app.exec_())
-    else:
-        print("Config Master LIN Success!")
-    #发送BREAK信号，一般用于唤醒设备
-    ret = LIN_SendBreak(DevHandles[0],LINMasterIndex)
-    if ret != LIN_SUCCESS:
-        print("Send LIN break failed!")
-        sys.exit(app.exec_())
-    else:
-        print("Send LIN break success!")
-    sleep(0.01)
+    DeviceCMD = DeviceOperate()
 
     ui.pushButton.clicked.connect(WriteMessage)
     ui.pushButton_3.clicked.connect(ReadMessage)
-    ui.pushButton_2.clicked.connect(Close)
+    ui.pushButton_2.clicked.connect(DeviceCMD.ClosePanel)
+    ui.pushButton_8.clicked.connect(DeviceCMD.OpenDevice)
+    ui.pushButton_9.clicked.connect(DeviceCMD.CloseDevice)
     ui.pushButton_4.clicked.connect(Old_Version)
     ui.pushButton_5.clicked.connect(New_Version)
     ui.pushButton_6.clicked.connect(OpenFile)
