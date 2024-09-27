@@ -20,6 +20,7 @@ finish_data = []
 FileData = []
 num_check = 0
 
+
 # 清除缓存
 def ClearCache():
     global first_message
@@ -40,7 +41,10 @@ def WriteMessage():
         LINMsg.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
     except ValueError:
         # ui.textEdit.setText("请求ID无效，请输入正确的16进制数！")
-        QMessageBox.warning(MainWindow, "警告", "请求ID无效，请输入正确的16进制数！")
+        QMessageBox.warning(MainWindow, "警告", "请求ID无效,请输入正确的16进制数!")
+        return
+    if not (0x00 <= LINMsg.ID <= 0xFF):
+        QMessageBox.warning(MainWindow, "警告", "请求ID无效,ID必须是两位十六进制数!(范围:00-FF)")
         return
     LINMsg.DataLen = 8
     message = ui.lineEdit.text()
@@ -82,31 +86,33 @@ def WriteMessage():
 # 读数据
 def ReadMessage():
     global first_message  # 全局变量存储首次ASCII码
-    LINMsg = LIN_MSG()
+    LINMsgRead = LIN_MSG()
     if ui.lineEdit_3.text() == "":
-        # ui.textEdit_2.setText("请输入响应ID!")
         QMessageBox.information(MainWindow, "提示", "请输入响应ID")
         return
     ID = ui.lineEdit_3.text()
     try:
-        LINMsg.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
+        LINMsgRead.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
     except ValueError:
         QMessageBox.warning(MainWindow, "警告", "响应ID无效，请输入正确的16进制数！")
         return
-    LINMsg.DataLen = 8
-    ret = LIN_Read(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
+    if not (0x00 <= LINMsgRead.ID <= 0xFF):
+        QMessageBox.warning(MainWindow, "警告", "请求ID无效,ID必须是两位十六进制数!(范围:00-FF)")
+        return
+    LINMsgRead.DataLen = 8
+    ret = LIN_Read(DevHandles[0], LINMasterIndex, byref(LINMsgRead), 1)
     if ret != LIN_SUCCESS:
-        print("LIN ID[0x%02X] read data failed!" % LINMsg.ID)
+        print("LIN ID[0x%02X] read data failed!" % LINMsgRead.ID)
         # 显示错误信息给用户，‌而不是退出程序
-        ui.textEdit_2.setText("LIN ID[0x%02X] read data failed!" % LINMsg.ID)
+        ui.textEdit_2.setText("LIN ID[0x%02X] read data failed!" % LINMsgRead.ID)
         return None
     else:
         message = ""
-        for i in range(LINMsg.DataLen - 1):
-            message += "0x%02X" % LINMsg.Data[i]
+        for i in range(LINMsgRead.DataLen - 1):
+            message += "0x%02X" % LINMsgRead.Data[i]
             message += " "
-        print("S2M [0x%02X]" % LINMsg.ID, message)
-        display_message = " ".join(["%02X" % byte for byte in LINMsg.Data[:LINMsg.DataLen - 1]])
+        print("S2M [0x%02X]" % LINMsgRead.ID, message)
+        display_message = " ".join(["%02X" % byte for byte in LINMsgRead.Data[:LINMsgRead.DataLen - 1]])
 
         ui.textEdit_2.insertPlainText(display_message)
         ui.textEdit_2.insertPlainText('\n')
@@ -116,36 +122,119 @@ def ReadMessage():
 
 # 旧版本读取
 def Old_Version():
-    ASCllLen = len(first_message)
-    if ASCllLen == 48:
-        message_str1 = first_message[18:24]
-        message_str2 = first_message[30:38]
-        message_str = message_str1 + message_str2
-        ascll_message = ''.join([chr(int(byte, 16)) for byte in message_str.split()[:ASCllLen]])
-        ui.lineEdit_5.setText(ascll_message)
-        print("SW:", ascll_message)
-    elif ASCllLen == 24:
-        message_str = first_message[15:23]
-        ascll_message = ''.join([chr(int(byte, 16)) for byte in message_str.split()[:ASCllLen]])
-        ui.lineEdit_6.setText(ascll_message)
-        print("HW:", ascll_message)
+    Old_Sw_LINMsg = LIN_MSG()
+    Old_Sw_LINMsg.ID = 0x3C
+    Old_Sw_LINMsg.DataLen = 8
+    # 发送并读取软件版本号
+    Sw_message = "7F 03 22 A6 34 FF FF FF"
+    wd = Sw_message.split(' ')
+    formatted_words = ['0x' + w for w in wd]
+    for i in range(Old_Sw_LINMsg.DataLen):
+        Old_Sw_LINMsg.Data[i] = int(formatted_words[i], 16)
+    ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(Old_Sw_LINMsg), 1)
+    if ret != LIN_SUCCESS:
+        print("LIN write data failed!")
+        return
+    else:
+        print("M2S", "[0x%02X] " % Old_Sw_LINMsg.ID, end='')
+        for i in range(Old_Sw_LINMsg.DataLen):
+            print("0x%02X " % Old_Sw_LINMsg.Data[i], end='')
+        print("")
+    sleep(0.01)  # 等待设备响应
+
+    # 两次读取软件版本号
+    Swdata_byte1 = ReadMessage().strip()
+    Swdata_byte2 = ReadMessage().strip()
+    Swdata_byte = f'{Swdata_byte1} {Swdata_byte2}'
+    Sw_data = Swdata_byte[18:24] + Swdata_byte[30:38]
+    Sw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Sw_data.split()])
+    ui.lineEdit_5.setText(Sw_ascll_message)
+    print("SW:", Sw_ascll_message)
+
+    # 读取硬件版本号
+    data_buffer = (c_byte * 8)(0x7F, 0x03, 0x22, 0xA6, 0x35, 0xFF, 0xFF, 0xFF)
+    Old_Hw_LINMsg = LIN_MSG()
+    Old_Hw_LINMsg.ID = 0x3C
+    Old_Hw_LINMsg.DataLen = 8
+    # 发送并读取硬件版本号
+    for i in range(0, Old_Hw_LINMsg.DataLen):
+        Old_Hw_LINMsg.Data[i] = data_buffer[i]
+    ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(Old_Hw_LINMsg), 1)
+    if ret != LIN_SUCCESS:
+        print("LIN write data failed!")
+        return
+    else:
+        print("M2S", "[0x%02X] " % Old_Hw_LINMsg.ID, end='')
+        for i in range(Old_Hw_LINMsg.DataLen):
+            print("0x%02X " % Old_Hw_LINMsg.Data[i], end='')
+        print("")
+    sleep(0.01)  # 等待设备响应
+    # 读硬件数据
+    Hwdata_byte = ReadMessage().strip()
+    Hw_data = Hwdata_byte[15:23]
+    Hw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Hw_data.split()])
+    ui.lineEdit_6.setText(Hw_ascll_message)
+    print("HW:", Hw_ascll_message)
 
 
 # 新版本读取
 def New_Version():
-    ASCllLen = len(first_message)
-    if ASCllLen == 48:
-        message_str1 = first_message[18:24]
-        message_str2 = first_message[30:38]
-        message_str = message_str1 + message_str2
-        ascll_message = ''.join([chr(int(byte, 16)) for byte in message_str.split()[:ASCllLen]])
-        ui.lineEdit_7.setText(ascll_message)
-        print("SW:", ascll_message)
-    elif ASCllLen == 24:
-        message_str = first_message[15:23]
-        ascll_message = ''.join([chr(int(byte, 16)) for byte in message_str.split()[:ASCllLen]])
-        ui.lineEdit_8.setText(ascll_message)
-        print("HW:", ascll_message)
+    New_Sw_LINMsg = LIN_MSG()
+    New_Sw_LINMsg.ID = 0x3C
+    New_Sw_LINMsg.DataLen = 8
+    # 发送并读取软件版本号
+    Sw_message = "7F 03 22 A6 34 FF FF FF"
+    wd = Sw_message.split(' ')
+    formatted_words = ['0x' + w for w in wd]
+    for i in range(New_Sw_LINMsg.DataLen):
+        New_Sw_LINMsg.Data[i] = int(formatted_words[i], 16)
+    ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(New_Sw_LINMsg), 1)
+    if ret != LIN_SUCCESS:
+        print("LIN write data failed!")
+        return
+    else:
+        print("M2S", "[0x%02X] " % New_Sw_LINMsg.ID, end='')
+        for i in range(New_Sw_LINMsg.DataLen):
+            print("0x%02X " % New_Sw_LINMsg.Data[i], end='')
+        print("")
+    sleep(0.01)  # 等待设备响应
+
+    # 两次读取软件版本号
+    Swdata_byte1 = ReadMessage().strip()
+    print(Swdata_byte1)
+    Swdata_byte2 = ReadMessage().strip()
+    print(Swdata_byte2)
+    Swdata_byte = f'{Swdata_byte1} {Swdata_byte2}'
+    Sw_data = Swdata_byte[18:24] + Swdata_byte[30:38]
+    Sw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Sw_data.split()])
+    ui.lineEdit_7.setText(Sw_ascll_message)
+    print("SW:", Sw_ascll_message)
+
+    # 读取硬件版本号
+    data_buffer = (c_byte * 8)(0x7F, 0x03, 0x22, 0xA6, 0x35, 0xFF, 0xFF, 0xFF)
+    New_Hw_LINMsg = LIN_MSG()
+    New_Hw_LINMsg.ID = 0x3C
+    New_Hw_LINMsg.DataLen = 8
+    # 发送并读取硬件版本号
+    for i in range(0, New_Hw_LINMsg.DataLen):
+        New_Hw_LINMsg.Data[i] = data_buffer[i]
+    ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(New_Hw_LINMsg), 1)
+    if ret != LIN_SUCCESS:
+        print("LIN write data failed!")
+        return
+    else:
+        print("M2S", "[0x%02X] " % New_Hw_LINMsg.ID, end='')
+        for i in range(New_Hw_LINMsg.DataLen):
+            print("0x%02X " % New_Hw_LINMsg.Data[i], end='')
+        print("")
+    sleep(0.01)  # 等待设备响应
+    # 读硬件数据
+    Hwdata_byte = ReadMessage().strip()
+    print(Hwdata_byte)
+    Hw_data = Hwdata_byte[15:23]
+    Hw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Hw_data.split()])
+    ui.lineEdit_8.setText(Hw_ascll_message)
+    print("HW:", Hw_ascll_message)
 
 
 # 字符转换16进制
@@ -172,6 +261,8 @@ def OpenFile(self):
     Files, _ = QFileDialog.getOpenFileName(None, '打开列表文件', 'C:\\',
                                            'LIN List File (*.bin);;MLX LIN List File (*.lin);;Any file (*)')
     ui.lineEdit_9.setText(Files)
+    print(Files)
+
     file = QFile(Files)
     # 读取文件
     if file.open(QIODevice.ReadOnly):
@@ -185,7 +276,6 @@ def OpenFile(self):
         print(FileData)
         FileLen = len(HexData)
         print(f".bin文件的数据长度Hex：{FileLen}")
-        # 逐行读取并转换成ASCII码
         while not file.atEnd():
             array = file.readLine()  # 逐行读取
             data = array.data()
@@ -236,7 +326,6 @@ def convert_and_send_init_data(file_name):  # 处理数据
             line = line.ljust(256, '0')
         # 将每 2 个十六进制字符转换回字节
         line_bytes = bytes.fromhex(line)
-
         # 首帧格式
         first_frame_data = [
             NAD,
@@ -380,11 +469,7 @@ def send_frame():
                 # 第 2 5 条发送报文无需验证
                 print("解密成功！")
                 flag = False
-            else:
-                # 如果报文匹配，停止循环
-                if res == formatted_resp:
-                    print("解密成功！")
-                    flag = False
+
             if index == 4:
                 if res.strip() == '':
                     continue
@@ -404,64 +489,55 @@ def send_frame():
                 # 第 5 条发送报文无需验证
                 print("解密成功！")
                 flag = False
-            else:
-                # 如果报文匹配，停止循环
-                if res == formatted_resp:
-                    print("解密成功2！")
-                    flag = False
-    # 发送数据
-    # 最后的输出帧
-    print("安全校验成功，开始烧录")
-    #print(finish_data)
-    send_biaozhi = 0
-    send_check = 0
-    for frame in finish_data:
-        ui.textEdit.setText(frame)  # 将数据显示在文本框中
-        LINMsg = LIN_MSG()
-        ID_Write = "3C"
-        LINMsg.ID = int(ID_Write, 16)  # 将文本框中获取的内容转换为16进制
-        LINMsg.DataLen = 8
-        words = frame.split(' ')
-        formatted_words = ['0x' + word for word in words]  # 对每个切片数据前加入'0x'
-        for i in range(0, LINMsg.DataLen):
-            LINMsg.Data[i] = int(formatted_words[i], 16)
-        ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
-        if ret != LIN_SUCCESS:
-            print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
-            ui.textEdit.setText("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
-            return
-        else:
-            print("M2S", "[0x%02X] " % LINMsg.ID, end='')
-            for i in range(LINMsg.DataLen):
-                print("0x%02X " % LINMsg.Data[i], end='')
-            print("")
-        sleep(0.01)
-        send_biaozhi += 1
-        if send_biaozhi > 21:
-            # 读数据
-            send_check += 1
-            LINMsgRead = LIN_MSG()
-            ID_Read = "3D"
-            LINMsgRead.ID = int(ID_Read, 16)  # 将文本框中获取的内容转换为16进制
-            ret = LIN_Read(DevHandles[0], LINMasterIndex, byref(LINMsgRead), 1)
+    return True
 
+
+def flash_message():
+    ret = send_frame()
+    global num_check
+    send_check = 0
+    if ret == True:
+        print("安全校验成功，开始烧录！")
+        index = 0  # 初始化 index
+        while index < len(finish_data):
+            frame = finish_data[index]
+            ui.textEdit.setText(frame)  # 将数据显示在文本框中
+            LINMsg = LIN_MSG()
+            ID_Write = "3C"
+            LINMsg.ID = int(ID_Write, 16)
+            LINMsg.DataLen = 8
+            words = frame.split(' ')
+            formatted_words = ['0x' + word for word in words]
+            for i in range(0, LINMsg.DataLen):
+                LINMsg.Data[i] = int(formatted_words[i], 16)
+            ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
             if ret != LIN_SUCCESS:
-                print("LIN ID[0x%02X] Read data failed!" % LINMsgRead.ID)
-                ui.textEdit_2.setText("LIN ID[0x%02X] Read data failed!" % LINMsgRead.ID)
+                print("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
+                ui.textEdit.setText("LIN ID[0x%02X] write data failed!" % LINMsg.ID)
                 return
-            # exit()
             else:
-                #print(*LINMsgRead.Data)
-                print("S2M", "[0x%02X] " % LINMsgRead.ID, end='')
-                for i in range(LINMsgRead.DataLen):
-                    print("0x%02X " % LINMsgRead.Data[i], end='')
+                print(index, "----M2S", "[0x%02X] " % LINMsg.ID, end='')
+                for i in range(LINMsg.DataLen):
+                    print("0x%02X " % LINMsg.Data[i], end='')
                 print("")
-                send_biaozhi = 0
-                print(LINMsgRead.Data[2])
-                # while LINMsgRead.Data[2] != 118:
-                #     sleep(1)
+
+                # 检查是否发送了22条报文
+                if (index + 1) % 22 == 0:
+                    while True:
+                        resread = ReadMessage().strip()
+                        # print("~~~~~~~~~~~~~~~~", resread, "~~~~~~~~~~~~~~", frame.strip())
+                        if resread == frame.strip():
+                            print(
+                                "=======================================================未收到响应，重新发送=======================================================")
+                            index -= 22  # 将index减少22，重新发送
+                            break
+                        else:
+                            print("收到响应，继续发送")
+                            send_check += 1
+                            break
+            index += 1  # 手动增加 index
+            sleep(0.05)
     print(send_check * 256 - num_check)
-            # sleep(0.1)
 
 
 # 获取指定位置的帧
@@ -499,17 +575,13 @@ if __name__ == "__main__":
     # Scan device
     ret = USB_ScanDevice(byref(DevHandles))
     if (ret == 0):
-        # print("No device connected!")
-        QMessageBox.critical(MainWindow, "提示", "没有设备连接，请连接后重启！")
-        # ui.textEdit_3.insertPlainText("No device connected!")
-        # ui.textEdit_3.insertPlainText('\n')
+        QMessageBox.critical(MainWindow, "提示", "没有设备连接，请连接后重试！")
         sys.exit(app.exec_())
     else:
-        # print("Have %d device connected!"%ret)
         ui.textEdit_3.insertPlainText("Have %d device connected!" % ret)
         ui.textEdit_3.insertPlainText('\n')
-    # Open device
 
+    # Open device
     ret = USB_OpenDevice(DevHandles[0])
     if (bool(ret)):
         # print("Open device success!")
@@ -590,6 +662,6 @@ if __name__ == "__main__":
     ui.pushButton_4.clicked.connect(Old_Version)
     ui.pushButton_5.clicked.connect(New_Version)
     ui.pushButton_6.clicked.connect(OpenFile)
-    ui.pushButton_7.clicked.connect(send_frame)
+    ui.pushButton_7.clicked.connect(flash_message)
 
     sys.exit(app.exec_())
