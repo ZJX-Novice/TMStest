@@ -258,31 +258,13 @@ def OpenFile(self):
     file = QFile(Files)
     # 读取文件
     if file.open(QIODevice.ReadOnly):
-        all_hex_data = []  # 用于存储所有行的原始十六进制数据
-        change_hex_data = []     # 用于存储转换过后的数据
         # 读取文件所有数据，进行校验
         array_check = file.readAll()
         HexData = binascii.hexlify(array_check)
         for n in range(1, len(HexData), 2):
             FileData.append(StrToHex(HexData[n - 1]) * 16 + StrToHex(HexData[n]))
-        print(FileData)
         FileLen = len(HexData)
         print(f".bin文件的数据长度Hex：{FileLen}")
-        while not file.atEnd():
-            array = file.readLine()  # 逐行读取
-            data = array.data()
-            hex_data = array.data().hex()
-            all_hex_data.append(hex_data)
-            # 检测数据类型并进行处理
-            processed_data = ''
-            for byte in data:
-                # 如果是ASCII字符范围（通常可打印字符）
-                if 0x20 <= byte <= 0x7E:  # 字符的范围
-                    processed_data += chr(byte)
-                else:
-                    processed_data += '_'  # 非字符数据，转换为下划线
-            change_hex_data.append(processed_data)  # 将处理后的结果存储在列表中
-        print(f"Total lines processed: {len(all_hex_data)}")  # 打印处理的行数
         file.close()
         convert_and_send_init_data(Files)
     else:
@@ -576,7 +558,7 @@ def set_frame(frame,index,value):
 class DeviceOperate():
     # 连接是否成功
     isConnected = False
-    def checkConnected() -> bool:
+    def checkConnected(self) -> bool:
         return bool(DeviceOperate.isConnected)
 
     def __init__(self) -> None:
