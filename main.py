@@ -340,7 +340,6 @@ def DiagSvcSecAccess_SaccKey(seed):
 #扩展会话+安全校验
 def send_frame():
     global num_check
-    #print(f"3C: {frame}")
     LINMsg = LIN_MSG()
     ID = "3C"
     LINMsg.ID = int(ID, 16)  # 将文本框中获取的内容转换为16进制
@@ -376,7 +375,7 @@ def send_frame():
     ]
     # 遍历 check_words
     for index, word in enumerate(check_words):
-        max_retries = 3  # 设置最大重发次数
+        max_retries = 4  # 设置最大重发次数
         retry_count = 0   # 初始化重发计数器
         # 发送报文
         wd = word.split(' ')
@@ -413,12 +412,6 @@ def send_frame():
                 ui.textEdit_2.setText("请输入响应ID!")
                 return
             send_res = ReadMessage().strip()
-
-            print("============================================================")
-            print(index,"-------------------------",send_res)
-            print(index,"-------------------------",formatted_resp)
-            print("============================================================")
-
             if send_res == formatted_resp:
                 print("-------",index,"匹配成功！")
                 flag = False
@@ -430,9 +423,6 @@ def send_frame():
                     QMessageBox.warning(MainWindow, "警告", "重发次数已超过最大限制，无法匹配！")
                     return
                 retry_count+=1
-
-            # else:
-            #     if index ==0:
 
             # 处理数组的第二个和第五个报文 (index == 1 or index == 4)
             if index == 1 :
@@ -482,11 +472,11 @@ def flash_message():
         QMessageBox.warning(MainWindow, "警告", "请检查连接状态")
         return
 
-    # # 校验是否选择文件
-    # Files = ui.lineEdit_9.text()
-    # if not Files:
-    #     QMessageBox.warning(MainWindow, "警告", "未选择文件，请选择文件！")
-    #     return
+    # 校验是否选择文件
+    Files = ui.lineEdit_9.text()
+    if not Files:
+        QMessageBox.warning(MainWindow, "警告", "未选择文件，请选择文件！")
+        return
 
     ret = send_frame()
     global num_check
@@ -494,7 +484,7 @@ def flash_message():
     if ret == True:
         print("安全校验成功，开始烧录！")
         index = 0
-        max_retries = 3  # 设置最大重发次数
+        max_retries = 5  # 设置最大重发次数
         retry_count = 0   # 初始化重发计数器
 
         while index < len(finish_data):
