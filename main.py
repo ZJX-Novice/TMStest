@@ -554,9 +554,8 @@ def flash_message():
                         else:
                             print("收到响应，继续发送")
                             retry_count = 0  # 重置重发计数器
-                            break  # 收到响应，跳出循环继续发送下一条
                             send_check += 1
-                            break
+                            break  # 收到响应，跳出循环继续发送下一条
             index += 1  # 手动增加 index
             sleep(0.05)
     else:
