@@ -27,6 +27,10 @@ def ClearCache():
 
 #写数据
 def WriteMessage():
+    # 校验连接状态
+    if(not DeviceOperate().checkConnected()):
+        QMessageBox.warning(MainWindow, "警告", "请检查连接状态")
+        return
     LINMsg = LIN_MSG()
     if ui.lineEdit_2.text()=="":
         #ui.textEdit.setText("请输入请求ID!")
@@ -70,7 +74,7 @@ def WriteMessage():
     ret = LIN_Write(DevHandles[0],LINMasterIndex,byref(LINMsg),1)
     if ret != LIN_SUCCESS:
         print("LIN ID[0x%02X] write data failed!"%LINMsg.ID)
-        ui.textEdit.setText("LIN ID[0x%02X] read data failed!"%LINMsg.ID)
+        ui.textEdit.setText("LIN ID[0x%02X] write data failed!"%LINMsg.ID)
     else:
         print("M2S","[0x%02X] "%LINMsg.ID,end='')
         for i in range(LINMsg.DataLen):
@@ -81,6 +85,10 @@ def WriteMessage():
     
 # 读数据
 def ReadMessage():
+    # 校验连接状态
+    if(not DeviceOperate().checkConnected()):
+        QMessageBox.warning(MainWindow, "警告", "请检查连接状态")
+        return
     global first_message    # 全局变量存储首次ASCII码
     LINMsgRead = LIN_MSG()
     if ui.lineEdit_3.text()=="":
