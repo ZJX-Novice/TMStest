@@ -197,6 +197,9 @@ def New_Version():
     if(not DeviceOperate().checkConnected()):
         QMessageBox.warning(MainWindow, "警告", "请检查连接状态")
         return
+    if ui.lineEdit_3.text()=="":
+        QMessageBox.information(MainWindow, "提示", "请输入响应ID")
+        return
     New_Sw_LINMsg = LIN_MSG()
     New_Sw_LINMsg.ID = 0x3C
     New_Sw_LINMsg.DataLen = 8
@@ -253,7 +256,7 @@ def New_Version():
     #读硬件数据
     Hwdata_byte = ReadMessage().strip()
     sleep(0.2)  # 等待设备响应
-    print(Hwdata_byte)
+    #print(Hwdata_byte)
     Hw_data = Hwdata_byte[15:23]
     Hw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Hw_data.split()])
     ui.lineEdit_8.setText(Hw_ascll_message)
@@ -393,7 +396,7 @@ def send_frame():
         "01 04 67 01 00 8B FF FF",
         "01 02 67 02 FF FF FF FF",
 #如果第二位pci为10，就继续执行发送报文，直到第二位不在范围0x20~0x2F（包含20和2F）里,进行接收响应
-        "",
+        "01 10 0E 31 01 DF FF 44",
         "01 21 00 01 58 00 00 01",
         "01 06 71 01 DF FF 01 F4",
         "01 04 71 03 DF FF FF FF",
