@@ -8,7 +8,6 @@ from PyQt5.QtCore import QDataStream, QFile, QIODevice
 import sys
 from ctypes import *
 import platform
-import sys
 from time import sleep
 from usb_device import *
 from usb2lin import *
@@ -77,7 +76,7 @@ def WriteMessage():
         for i in range(LINMsg.DataLen):
             print("0x%02X "%LINMsg.Data[i],end='')
         print("")
-    sleep(0.1)
+    #sleep(0.1)
     #ClearCache()
     
 # 读数据
@@ -118,6 +117,13 @@ def ReadMessage():
 
 # 旧版本读取
 def Old_Version():
+    # 校验连接状态
+    if(not DeviceOperate().checkConnected()):
+        QMessageBox.warning(MainWindow, "警告", "请检查连接状态")
+        return
+    if ui.lineEdit_3.text()=="":
+        QMessageBox.information(MainWindow, "提示", "请输入响应ID")
+        return
     Old_Sw_LINMsg = LIN_MSG()
     Old_Sw_LINMsg.ID = 0x3C
     Old_Sw_LINMsg.DataLen = 8
@@ -130,17 +136,20 @@ def Old_Version():
     ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(Old_Sw_LINMsg), 1)
     if ret != LIN_SUCCESS:
         print("LIN write data failed!")
+        QMessageBox.information(MainWindow,"提示","LIN write data failed!")
         return
     else:
         print("M2S", "[0x%02X] " % Old_Sw_LINMsg.ID, end='')
         for i in range(Old_Sw_LINMsg.DataLen):
             print("0x%02X " % Old_Sw_LINMsg.Data[i], end='')
         print("")
-    sleep(0.01)  # 等待设备响应
+    sleep(0.2)  # 等待设备响应
 
     # 两次读取软件版本号
     Swdata_byte1 = ReadMessage().strip()
+    sleep(0.2)  # 等待设备响应
     Swdata_byte2 = ReadMessage().strip()
+    sleep(0.2)  # 等待设备响应
     Swdata_byte = f'{Swdata_byte1} {Swdata_byte2}'
     Sw_data=Swdata_byte[18:24]+Swdata_byte[30:38]
     Sw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Sw_data.split()])
@@ -157,6 +166,7 @@ def Old_Version():
         Old_Hw_LINMsg.Data[i] = data_buffer[i]
     ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(Old_Hw_LINMsg), 1)
     if ret != LIN_SUCCESS:
+        QMessageBox.information(MainWindow,"提示","LIN write data failed!")
         print("LIN write data failed!")
         return
     else:
@@ -167,13 +177,18 @@ def Old_Version():
     sleep(0.01)  # 等待设备响应
     #读硬件数据
     Hwdata_byte = ReadMessage().strip()
+    sleep(0.2)  # 等待设备响应
     Hw_data = Hwdata_byte[15:23]
     Hw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Hw_data.split()])
     ui.lineEdit_6.setText(Hw_ascll_message)
     print("HW:",Hw_ascll_message)
-    
+
 # 新版本读取
 def New_Version():
+    # 校验连接状态
+    if(not DeviceOperate().checkConnected()):
+        QMessageBox.warning(MainWindow, "警告", "请检查连接状态")
+        return
     New_Sw_LINMsg = LIN_MSG()
     New_Sw_LINMsg.ID = 0x3C
     New_Sw_LINMsg.DataLen = 8
@@ -186,19 +201,22 @@ def New_Version():
     ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(New_Sw_LINMsg), 1)
     if ret != LIN_SUCCESS:
         print("LIN write data failed!")
+        QMessageBox.information(MainWindow,"提示","LIN write data failed!")
         return
     else:
         print("M2S", "[0x%02X] " % New_Sw_LINMsg.ID, end='')
         for i in range(New_Sw_LINMsg.DataLen):
             print("0x%02X " % New_Sw_LINMsg.Data[i], end='')
         print("")
-    sleep(0.01)  # 等待设备响应
+    sleep(0.2)  # 等待设备响应
 
     # 两次读取软件版本号
     Swdata_byte1 = ReadMessage().strip()
-    print(Swdata_byte1)
+    #print(Swdata_byte1)
+    sleep(0.2)  # 等待设备响应
     Swdata_byte2 = ReadMessage().strip()
-    print(Swdata_byte2)
+    #print(Swdata_byte2)
+    sleep(0.2)  # 等待设备响应
     Swdata_byte = f'{Swdata_byte1} {Swdata_byte2}'
     Sw_data=Swdata_byte[18:24]+Swdata_byte[30:38]
     Sw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Sw_data.split()])
@@ -216,15 +234,17 @@ def New_Version():
     ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(New_Hw_LINMsg), 1)
     if ret != LIN_SUCCESS:
         print("LIN write data failed!")
+        QMessageBox.information(MainWindow,"提示","LIN write data failed!")
         return
     else:
         print("M2S", "[0x%02X] " % New_Hw_LINMsg.ID, end='')
         for i in range(New_Hw_LINMsg.DataLen):
             print("0x%02X " % New_Hw_LINMsg.Data[i], end='')
         print("")
-    sleep(0.01)  # 等待设备响应
+    sleep(0.2)  # 等待设备响应
     #读硬件数据
     Hwdata_byte = ReadMessage().strip()
+    sleep(0.2)  # 等待设备响应
     print(Hwdata_byte)
     Hw_data = Hwdata_byte[15:23]
     Hw_ascll_message = ''.join([chr(int(byte, 16)) for byte in Hw_data.split()])
@@ -241,7 +261,6 @@ def StrToHex(data):
     elif data >= 0x61 and data <= 0x7A:
         data = data - 87
     return data
-
 
 # 打开文件夹
 def OpenFileFolder(self):
@@ -375,7 +394,7 @@ def send_frame():
     ]
     # 遍历 check_words
     for index, word in enumerate(check_words):
-        max_retries = 4  # 设置最大重发次数
+        max_retries = 3  # 设置最大重发次数
         retry_count = 0   # 初始化重发计数器
         # 发送报文
         wd = word.split(' ')
@@ -390,10 +409,10 @@ def send_frame():
         while flag:
             send_1=hex(int(get_frame(word, 1),16))
             if(send_1=='0x10'):
-                print("--------",index,"发送首帧")
+                print("发送首帧")
                 flag = False
             if '0x20'<=send_1<='0x2F':
-                print("--------",index,"发送续帧")
+                print("发送续帧")
                 #flag = False
 
             ret = LIN_Write(DevHandles[0], LINMasterIndex, byref(LINMsg), 1)
@@ -420,7 +439,20 @@ def send_frame():
                 print("-------",index,"匹配失败，正在重发...")
                 if retry_count >= max_retries:
                     print("重发次数已超过最大限制，无法匹配！")
-                    QMessageBox.warning(MainWindow, "警告", "重发次数已超过最大限制，无法匹配！")
+                    if index == 0:
+                        QMessageBox.warning(MainWindow, "警告", "扩展会话未进入，请检查设备连接状态！")
+                    if index == 2:
+                        QMessageBox.warning(MainWindow, "警告", "第一次安全校验未通过，请重试！")
+                    if index == 3:
+                        QMessageBox.warning(MainWindow, "警告", "编程会话未进入，请重试！")
+                    if index == 5:
+                        QMessageBox.warning(MainWindow, "警告", "第二次安全校验未通过，请重试！")
+                    if index == 8:
+                        QMessageBox.warning(MainWindow, "警告", "数据请求未通过，请重试！")
+                    if index == 9:
+                        QMessageBox.warning(MainWindow, "警告", "程序控制请求未通过，请重试！")
+                    if index == 11:
+                        QMessageBox.warning(MainWindow,"警告","请求下载失败，请重试！")
                     return
                 retry_count+=1
 
@@ -466,6 +498,7 @@ def send_frame():
                 flag = False
     return True
 
+# 写入数据
 def flash_message():
     # 校验连接状态
     if(not DeviceOperate().checkConnected()):
@@ -516,11 +549,11 @@ def flash_message():
                         resread = ReadMessage().strip()
                         if resread == frame.strip():
                             print("=======================================================未收到响应，重新发送=======================================================")
-                            retry_count += 1
                             if retry_count > max_retries:
                                 print(f"重发已达{max_retries}次，退出程序")
                                 QMessageBox.warning(MainWindow, "警告", f"已重发{max_retries}次，未收到响应。请检查设备状态。")
                                 return
+                            retry_count += 1
                             index -= 22  # 将index减少22，重新发送
                             break
                         else:
@@ -529,9 +562,9 @@ def flash_message():
                             send_check += 1
                             break  # 收到响应，跳出循环继续发送下一条
             index += 1  # 手动增加 index
-            sleep(0.05)
-    else:
-        QMessageBox.warning(MainWindow, "警告", "安全校验失败，请检查设备状态!")
+            sleep(0.03)
+    # else:
+    #     QMessageBox.warning(MainWindow, "警告", "安全校验失败，请检查设备状态!")
 
     print(send_check * 256 - num_check)
 # 获取指定位置的帧
